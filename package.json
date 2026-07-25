@@ -12,15 +12,17 @@
   },
   "bin": {
     "execute-software-mission-a2a-message": "./bin/execute-a2a-message.mjs",
-    "serve-software-mission-a2a": "./bin/serve-a2a.mjs"
+    "serve-software-mission-a2a": "./bin/serve-a2a.mjs",
+    "serve-software-mission-x402": "./bin/x402-server.mjs"
   },
   "scripts": {
-    "check": "node --check src/client.mjs && node --check src/a2a-executor.mjs && node --check src/market-client.mjs && node --check bin/execute-a2a-message.mjs && node --check bin/serve-a2a.mjs",
+    "check": "node --check src/client.mjs && node --check src/a2a-executor.mjs && node --check src/market-client.mjs && node --check bin/execute-a2a-message.mjs && node --check bin/serve-a2a.mjs && node --check bin/x402-server.mjs",
     "test": "node --test",
     "verify": "npm run check && npm test"
   },
   "dependencies": {
     "@a2a-js/sdk": "1.0.0-beta.0",
+    "@emsenn/activitypub-services-section": "file:../../../web-services-section/services/activitypub-services-section",
     "@emsenn/a2a-contracted-agent-service": "file:../../../web-services-section/services/a2a-services-section/services/a2a-contracted-agent-service",
     "@emsenn/a2a-rmn-part-service": "file:../../../web-services-section/services/a2a-services-section/services/a2a-rmn-part-service",
     "@emsenn/a2a-rmn-task-client-service": "file:../../../web-services-section/services/a2a-services-section/services/a2a-rmn-task-client-service",
@@ -31,7 +33,9 @@
     "@emsenn/rwil-rdf-services": "file:../../../../../lenticule-science/services/obsmetrological-services-section/services/rwil-rdf-services",
     "@emsenn/sandbox-command-execution-service": "file:../sandbox-command-execution-service",
     "@emsenn/software-edit-language-service": "file:../software-edit-language-service",
-    "@emsenn/software-trajectory-memory-service": "file:../software-trajectory-memory-service"
+    "@emsenn/software-trajectory-memory-service": "file:../software-trajectory-memory-service",
+    "@emsenn/x402-services-section": "file:../../../web-services-section/services/x402-services-section",
+    "express": "5.1.0"
   },
   "engines": {
     "node": ">=22"

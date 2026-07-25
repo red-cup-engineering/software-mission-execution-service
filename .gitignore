@@ -1,6 +1,8 @@
 node_modules/
 data/a2a/tasks/
+data/activitypub/
 data/agent-card-signing/
+data/evm/keystores/
 data/rmn/
 data/rwil/
-data/evm/keystores/
+data/x402/

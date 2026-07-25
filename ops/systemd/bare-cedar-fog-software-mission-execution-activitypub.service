@@ -1,0 +1,29 @@
+[Unit]
+Description=Software Mission Execution Cell ActivityPub face
+After=network-online.target
+Wants=network-online.target
+
+[Service]
+Type=exec
+WorkingDirectory=/home/emsenn/info/lib/emsenn/services/561-group/services/red-cup-engineering/services/software-development-services-section/services/software-mission-execution-service
+Environment=NODE_ENV=production
+Environment=HOST=127.0.0.1
+Environment=PORT=15628
+Environment=ACTIVITYPUB_ORIGIN=https://bare-cedar-fog.561.group
+Environment=ACTIVITYPUB_IDENTIFIER=software-mission-execution
+Environment="ACTIVITYPUB_ACTOR_NAME=Software Mission Execution Service"
+Environment="ACTIVITYPUB_ACTOR_SUMMARY=Executes one bounded software mission through purchased inference, isolated tools, independent acceptance, and durable trajectory memory."
+Environment=ACTIVITYPUB_CELL_ID=ni:///sha-256;WrnrGi5ks0HreesQV0V7Z0i-02op4qrGChyeSszqSlg
+Environment=ACTIVITYPUB_CONTROLLER=did:pkh:eip155:5615610:0x02afc351a638176a2213ee9af01c34222700a6e9
+Environment=ACTIVITYPUB_KEYS_PATH=/home/emsenn/info/lib/emsenn/services/561-group/services/red-cup-engineering/services/software-development-services-section/services/software-mission-execution-service/data/activitypub/keys.json
+Environment=ACTIVITYPUB_STATE_PATH=/home/emsenn/info/lib/emsenn/services/561-group/services/red-cup-engineering/services/software-development-services-section/services/software-mission-execution-service/data/activitypub/state.sqlite
+Environment=ACTIVITYPUB_INBOX_BEARER_TOKEN_FILE=/home/emsenn/info/lib/emsenn/services/561-group/services/red-cup-engineering/services/software-development-services-section/services/software-mission-execution-service/data/activitypub/inbox-bearer.token
+Environment=ACTIVITYPUB_OUTBOX_PATH=/home/emsenn/info/lib/emsenn/services/561-group/services/red-cup-engineering/services/software-development-services-section/services/software-mission-execution-service/content/activitypub/outbox.json
+ExecStart=/home/emsenn/.config/nvm/versions/node/v24.13.1/bin/node node_modules/@emsenn/activitypub-services-section/src/server.mjs
+Restart=always
+RestartSec=2
+NoNewPrivileges=true
+PrivateTmp=true
+
+[Install]
+WantedBy=default.target

@@ -1,0 +1,27 @@
+{
+  "id": "ni:///sha-256;DVbxrQKH2Zsjrh3twvPlpveJMOzpDHRCUvmwy3s7WmI",
+  "type": "CapabilityCellManifest",
+  "version": 2,
+  "sku": "ni:///sha-256;qNrsU8uA7WvzC0VPHidC9FhLjyaLp1mgxsEyKjKZOZo",
+  "capability": "ni:///sha-256;qTArgykFxDwW-NnKtb-NegnwJBZ36VocGBcd0V-sCoc",
+  "controller": "did:pkh:eip155:5615610:0x02afc351a638176a2213ee9af01c34222700a6e9",
+  "faces": {
+    "github": {
+      "repository": "https://github.com/red-cup-engineering/software-mission-execution-service",
+      "identity": "https://raw.githubusercontent.com/red-cup-engineering/software-mission-execution-service/main/content/capcell/identity.json"
+    },
+    "activitypub": {
+      "actor": "https://bare-cedar-fog.561.group/actors/software-mission-execution"
+    },
+    "a2a": {
+      "agentCard": "https://bare-cedar-fog.561.group/a2a/software-mission-execution/.well-known/agent-card.json"
+    },
+    "x402": {
+      "offer": "https://bare-cedar-fog.561.group/x402/software-mission-execution/offer",
+      "invoke": "https://bare-cedar-fog.561.group/x402/software-mission-execution/invoke"
+    },
+    "evm": {
+      "account": "eip155:5615610:0x02afc351a638176a2213ee9af01c34222700a6e9"
+    }
+  }
+}

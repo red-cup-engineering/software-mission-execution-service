@@ -1,0 +1,21 @@
+{
+  "kind": "org.emsenn.capability-offer.v3",
+  "cell": "ni:///sha-256;WrnrGi5ks0HreesQV0V7Z0i-02op4qrGChyeSszqSlg",
+  "sku": "ni:///sha-256;qNrsU8uA7WvzC0VPHidC9FhLjyaLp1mgxsEyKjKZOZo",
+  "provider": "urn:ame:software-mission-execution-service",
+  "operation": "execute-software-mission",
+  "law": "ni:///sha-256;qTArgykFxDwW-NnKtb-NegnwJBZ36VocGBcd0V-sCoc",
+  "agentCard": "https://bare-cedar-fog.561.group/a2a/software-mission-execution/.well-known/agent-card.json",
+  "authorization": {
+    "profile": "OCapN",
+    "grantRequired": true
+  },
+  "price": {
+    "protocol": "x402",
+    "asset": "0x610178dA211FEF7D417bC0e6FeD39F05609AD788",
+    "amount": "33",
+    "network": "eip155:5615610",
+    "payTo": "0x02afc351a638176a2213ee9af01c34222700a6e9"
+  },
+  "expiresAt": "2027-07-25T00:00:00.000Z"
+}

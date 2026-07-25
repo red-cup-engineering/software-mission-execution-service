@@ -1,0 +1,32 @@
+[
+  {
+    "@context": "https://www.w3.org/ns/activitystreams",
+    "id": "https://bare-cedar-fog.561.group/activities/software-mission-execution/cell/1",
+    "type": "Announce",
+    "actor": "https://bare-cedar-fog.561.group/actors/software-mission-execution",
+    "to": "https://www.w3.org/ns/activitystreams#Public",
+    "object": {
+      "id": "ni:///sha-256;WrnrGi5ks0HreesQV0V7Z0i-02op4qrGChyeSszqSlg",
+      "type": "Service",
+      "name": "Software Mission Execution Service",
+      "url": "https://bare-cedar-fog.561.group/a2a/software-mission-execution/.well-known/agent-card.json",
+      "attachment": [
+        {
+          "type": "PropertyValue",
+          "name": "SKU",
+          "value": "ni:///sha-256;qNrsU8uA7WvzC0VPHidC9FhLjyaLp1mgxsEyKjKZOZo"
+        },
+        {
+          "type": "PropertyValue",
+          "name": "Capability Law",
+          "value": "ni:///sha-256;qTArgykFxDwW-NnKtb-NegnwJBZ36VocGBcd0V-sCoc"
+        },
+        {
+          "type": "PropertyValue",
+          "name": "Controller",
+          "value": "did:pkh:eip155:5615610:0x02afc351a638176a2213ee9af01c34222700a6e9"
+        }
+      ]
+    }
+  }
+]

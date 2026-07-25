@@ -6,8 +6,13 @@ export const MISSION_EXECUTION_ROOT = fileURLToPath(new URL("..", import.meta.ur
 export const DEFAULT_MISSION_EXECUTION_DATA_ROOT = fileURLToPath(new URL("../data", import.meta.url));
 export const ROUTE_OBSERVATION_CATEGORY = "software-mission-execution.route-observation";
 
-async function appendRouteObservation(record, { dataRoot, rwilAgentUrl, signal }) {
-  const store = createSettlementStore({ settlementRoot: MISSION_EXECUTION_ROOT, dataRoot, agentUrl: rwilAgentUrl });
+async function appendRouteObservation(record, { dataRoot, rwilAgentUrl, settlementCaip2, signal }) {
+  const store = createSettlementStore({
+    settlementRoot: MISSION_EXECUTION_ROOT,
+    dataRoot,
+    agentUrl: rwilAgentUrl,
+    caip2: settlementCaip2,
+  });
   return store.record({ category: ROUTE_OBSERVATION_CATEGORY, recordedAt: record.finishedAt, record, signal });
 }
 
@@ -16,6 +21,7 @@ export async function runMissionPipeline(mission, {
   signal,
   dataRoot = DEFAULT_MISSION_EXECUTION_DATA_ROOT,
   rwilAgentUrl = process.env.RWIL_RDF_AGENT,
+  settlementCaip2 = process.env.SETTLEMENT_CAIP2,
 } = {}) {
   if (!["bounded", "extended"].includes(mission.routingProfile ?? "bounded")) throw new Error("mission routingProfile must be bounded or extended");
   if (mission.routingProfile === "extended" && (typeof mission.extendedRoutingRationale !== "string"
@@ -52,6 +58,11 @@ export async function runMissionPipeline(mission, {
     sameSessionRetry: false,
     modelEscalationAllowed: false,
   };
-  const routeRecord = await appendRouteObservation(observation, { dataRoot, rwilAgentUrl, signal });
+  const routeRecord = await appendRouteObservation(observation, {
+    dataRoot,
+    rwilAgentUrl,
+    settlementCaip2,
+    signal,
+  });
   return { ...current, phases, route: { ...observation, graphPath: routeRecord.graphPath, objectPath: routeRecord.objectPath, semanticId: routeRecord.documentNi } };
 }

@@ -1,0 +1,8 @@
+{
+  "type": "CapabilityCellIdentity",
+  "version": 1,
+  "id": "ni:///sha-256;WrnrGi5ks0HreesQV0V7Z0i-02op4qrGChyeSszqSlg",
+  "sku": "ni:///sha-256;qNrsU8uA7WvzC0VPHidC9FhLjyaLp1mgxsEyKjKZOZo",
+  "capability": "ni:///sha-256;qTArgykFxDwW-NnKtb-NegnwJBZ36VocGBcd0V-sCoc",
+  "controller": "did:pkh:eip155:5615610:0x02afc351a638176a2213ee9af01c34222700a6e9"
+}

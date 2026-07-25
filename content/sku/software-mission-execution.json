@@ -1,0 +1,27 @@
+{
+  "id": "ni:///sha-256;qNrsU8uA7WvzC0VPHidC9FhLjyaLp1mgxsEyKjKZOZo",
+  "type": "StockKeepingUnit",
+  "schema": "urn:emsenn:schema:stock-keeping-unit:2026-07-24",
+  "sku": "software-mission-execution-service.software-mission-execution.execute-software-mission.qTArgykF",
+  "producer": {
+    "actor": "urn:ame:software-mission-execution-service",
+    "nodeId": "software-mission-execution-service"
+  },
+  "product": {
+    "name": "Bounded software mission execution",
+    "kind": "service-invocation",
+    "contract": {
+      "id": "software-mission-execution",
+      "law": "ni:///sha-256;qTArgykFxDwW-NnKtb-NegnwJBZ36VocGBcd0V-sCoc"
+    },
+    "operation": "execute-software-mission",
+    "description": "Execute one bounded software mission through purchased inference, isolated tools, independent acceptance, and durable trajectory memory."
+  },
+  "denominations": [
+    "relative-resolution-milliquanta-v1"
+  ],
+  "pricing": {
+    "intrinsicPrice": null,
+    "priceFormation": "counterparty-border-offer"
+  }
+}

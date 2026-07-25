@@ -30,7 +30,11 @@
         "required": true,
         "params": {
           "profile": "org.emsenn.rmn.sovereign-circuit-interface.v1",
-          "account": "eip155:31337:0x0f43cfb9883e806630da876c9b1bf6dfeda70cd7",
+          "account": "eip155:5615610:0x02afc351a638176a2213ee9af01c34222700a6e9",
+          "cell": "ni:///sha-256;WrnrGi5ks0HreesQV0V7Z0i-02op4qrGChyeSszqSlg",
+          "sku": "ni:///sha-256;qNrsU8uA7WvzC0VPHidC9FhLjyaLp1mgxsEyKjKZOZo",
+          "capability": "ni:///sha-256;qTArgykFxDwW-NnKtb-NegnwJBZ36VocGBcd0V-sCoc",
+          "controller": "did:pkh:eip155:5615610:0x02afc351a638176a2213ee9af01c34222700a6e9",
           "authority": "ni:///sha-256;3v3AENHnxTccPfzdkOn_-fxMjaAlsCSCwz8j8OGYr-Y",
           "custody": "ni:///sha-256;6ZMfTFFK6ZHRTfEZs7585kN3Kq75pToLXuJx-DOaTxk",
           "territory": "ni:///sha-256;RJ6_SM0Y-MiuTLH86nWnfFh_ME8jAdel6mOVCv9bahU",

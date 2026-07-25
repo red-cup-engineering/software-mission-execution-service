@@ -7,6 +7,7 @@ import { startRwilProviderProcess } from "@emsenn/rwil-rdf-services/test-provide
 import { runMissionPipeline } from "../src/mission-pipeline.mjs";
 
 let rwil;
+const settlementCaip2 = "eip155:31337";
 test.before(async () => { rwil = await startRwilProviderProcess(); });
 test.after(async () => { await rwil.close(); });
 
@@ -35,7 +36,12 @@ test("one A2A request performs one knowledge pulse and leaves failure in enterpr
     supplierExclusions: ["urn:ame:conflicted-provider"],
   };
   const runMission = async (input) => { calls.push(input); return result(false, "one bounded provider contact could not resolve"); };
-  const settled = await runMissionPipeline(mission, { runMission, dataRoot, rwilAgentUrl: rwil.agentCardUrl });
+  const settled = await runMissionPipeline(mission, {
+    runMission,
+    dataRoot,
+    rwilAgentUrl: rwil.agentCardUrl,
+    settlementCaip2,
+  });
 
   assert.equal(settled.outcome.verified, false);
   assert.equal(calls.length, 1);
@@ -53,7 +59,12 @@ test("extended routing requires an explicit customer rationale before any provid
   await assert.rejects(runMissionPipeline({
     id: "urn:test:extended-without-rationale", objective: "multi-file assay", territory: dataRoot,
     verifyCommand: "true", routingProfile: "extended",
-  }, { dataRoot, rwilAgentUrl: rwil.agentCardUrl, runMission: async () => result(true, "must not run") }), /customer rationale/u);
+  }, {
+    dataRoot,
+    rwilAgentUrl: rwil.agentCardUrl,
+    settlementCaip2,
+    runMission: async () => result(true, "must not run"),
+  }), /customer rationale/u);
 });
 
 test("passes a positive customer token demand to provider-market selection without a universal ceiling", async () => {
@@ -65,6 +76,7 @@ test("passes a positive customer token demand to provider-market selection witho
   }, {
     dataRoot,
     rwilAgentUrl: rwil.agentCardUrl,
+    settlementCaip2,
     runMission: async (mission) => { calls.push(mission); return result(true, "provider admitted the requested lot"); },
   });
   assert.equal(calls.length, 1);
@@ -81,6 +93,7 @@ test("refuses a non-positive token quantity before provider-market selection", a
   }, {
     dataRoot,
     rwilAgentUrl: rwil.agentCardUrl,
+    settlementCaip2,
     runMission: async () => { calls += 1; return result(true, "must not run"); },
   }), /maxTokens must be a positive safe integer/u);
   assert.equal(calls, 0);
