@@ -1,0 +1,10 @@
+#lang rmn/v2
+(map
+  ("type" "SoftwareMissionExecutionLaw")
+  ("version" 6)
+  ("provider" "one sovereign software mission execution settlement")
+  ("precondition" "One signed A2A 1.0 Message carries exactly one canonical RMN/CBOR SoftwareMissionExecutionRequest addressed to this settlement. It names bounded territory, writable and readable lanes, verification and protected acceptance, provider capabilities, resource ceilings, and proposal-only authority.")
+  ("operation" "Validate any protected capsule through the protected-acceptance service, recall exact task-class verified trajectories through the trajectory-memory service, perform one bounded enterprise-knowledge pulse, procure one typed inference contact, isolate admitted territory, execute one bounded declared edit, run customer-declared verification and acceptance, integrate a passing change only through the customer-controlled boundary, append the trajectory through the trajectory-memory service, and return the exact result. A2A carries each seam; RMN owns meaning; deterministic CBOR and RFC 6920 ni own identity.")
+  ("postcondition" "Every request, selected offer, provider settlement, tool transition, verification, acceptance, proposal or integrated change, refusal, route observation, and trajectory receipt has typed identity and append-only witness history. A failed pulse schedules no same-session retry and no request becomes a filesystem queue item.")
+  ("refusal" "Refuse noncanonical bytes, a foreign operation, incomplete context, unsafe tools, source drift, provider mutation of customer territory, provider-authored acceptance, or authority outside the admitted lanes.")
+  ("invariants" ("one-execution-die" "one-enterprise-knowledge-pulse-per-request" "exact-task-class-verified-memory-only" "one-inference-contact" "one-bounded-edit" "no-same-session-retry" "no-filesystem-queue" "no-customer-package-import" "no-direct-json-semantic-path" "provider-proposal-is-not-customer-acceptance" "implementer-cannot-author-or-edit-acceptance" "selected-provider-refusal-is-terminal" "tensor-execution-remains-local")))

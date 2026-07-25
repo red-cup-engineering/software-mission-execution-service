@@ -1,0 +1,6 @@
+#lang rmn/v2
+(predicate "software-mission-execution-typed-inference-procurement-v1"
+  (base "ContextCompleteSoftwareWorkDemand")
+  (base "ProviderAuthoredComparableOffer")
+  (base "WitnessedRmnInferenceCandidate")
+  (base "SoftwareMissionExecutionCustomerAssay"))

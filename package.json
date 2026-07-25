@@ -1,0 +1,61 @@
+{
+  "name": "@emsenn/software-mission-execution-service",
+  "version": "1.0.0",
+  "private": true,
+  "type": "module",
+  "description": "Sovereign die for one bounded software-mission execution operation.",
+  "exports": {
+    ".": "./src/client.mjs",
+    "./client": "./src/client.mjs",
+    "./customer-induction": "./src/customer-induction.mjs",
+    "./executor": "./src/a2a-executor.mjs"
+  },
+  "bin": {
+    "execute-software-mission-a2a-message": "./bin/execute-a2a-message.mjs",
+    "serve-software-mission-a2a": "./bin/serve-a2a.mjs"
+  },
+  "scripts": {
+    "check": "node --check src/client.mjs && node --check src/a2a-executor.mjs && node --check src/market-client.mjs && node --check bin/execute-a2a-message.mjs && node --check bin/serve-a2a.mjs",
+    "test": "node --test",
+    "verify": "npm run check && npm test"
+  },
+  "dependencies": {
+    "@a2a-js/sdk": "1.0.0-beta.0",
+    "@emsenn/a2a-contracted-agent-service": "file:../../../web-services-section/services/a2a-services-section/services/a2a-contracted-agent-service",
+    "@emsenn/a2a-rmn-part-service": "file:../../../web-services-section/services/a2a-services-section/services/a2a-rmn-part-service",
+    "@emsenn/a2a-rmn-task-client-service": "file:../../../web-services-section/services/a2a-services-section/services/a2a-rmn-task-client-service",
+    "@emsenn/coding-context-projection-service": "file:../coding-context-projection-service",
+    "@emsenn/inference-work-lot-service": "file:../../../../../../../board-of-directors/services/executive-office/services/working-services-section/services/inference-work-lot-service",
+    "@emsenn/protected-acceptance-service": "file:../protected-acceptance-service",
+    "@emsenn/rmn-semantic-conformance": "file:../../../../../lenticule-science/services/obsmetrological-services-section/services/rmn-semantic-conformance",
+    "@emsenn/rwil-rdf-services": "file:../../../../../lenticule-science/services/obsmetrological-services-section/services/rwil-rdf-services",
+    "@emsenn/sandbox-command-execution-service": "file:../sandbox-command-execution-service",
+    "@emsenn/software-edit-language-service": "file:../software-edit-language-service",
+    "@emsenn/software-trajectory-memory-service": "file:../software-trajectory-memory-service"
+  },
+  "engines": {
+    "node": ">=22"
+  },
+  "x-agentic-metro-enterprise": {
+    "node-id": "software-mission-execution-service",
+    "actor": "urn:ame:software-mission-execution-service",
+    "organizational-kind": "software-execution-provider",
+    "owners": [
+      "software-development-services-section"
+    ],
+    "admission": "one canonical RMN/CBOR SoftwareMissionExecutionRequest received through the hired A2A 1.0 provider",
+    "refusal": "unbounded territory or tools, incomplete acceptance evidence, provider self-attestation, customer-border overwrite, noncanonical identity, or direct JSON/local-process customer invocation",
+    "operation-catalog": {
+      "execute-software-mission": {
+        "contract": "content/contracts/software-mission-execution.rml",
+        "protocols": [
+          "RMN",
+          "A2A 1.0",
+          "RWIL/RDF"
+        ],
+        "returns": "SoftwareMissionExecutionResult|SoftwareMissionExecutionRefusal",
+        "legacyCompatibility": false
+      }
+    }
+  }
+}

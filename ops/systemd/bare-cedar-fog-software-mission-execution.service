@@ -1,0 +1,26 @@
+[Unit]
+Description=Bare Cedar Fog sovereign software mission execution A2A provider
+After=network-online.target rwil-rdf-services.service bare-cedar-fog-rmn-semantic-conformance.service inference-work-lot-service.service software-trajectory-memory-service.service
+Wants=network-online.target
+Requires=rwil-rdf-services.service bare-cedar-fog-rmn-semantic-conformance.service inference-work-lot-service.service software-trajectory-memory-service.service
+
+[Service]
+Environment=INFERENCE_WORK_LOT_AGENT_CARD_URL=http://127.0.0.1:8796/.well-known/agent-card.json
+Environment=SOFTWARE_TRAJECTORY_MEMORY_AGENT_CARD_URL=http://127.0.0.1:19843/.well-known/agent-card.json
+Environment=PATH=/home/emsenn/.config/nvm/versions/node/v24.13.1/bin:/usr/local/bin:/usr/bin:/bin
+Type=simple
+WorkingDirectory=/home/emsenn/info/lib/emsenn/services/561-group/services/red-cup-engineering/services/software-development-services-section/services/software-mission-execution-service
+Environment=RWIL_RDF_AGENT=http://127.0.0.1:19764/.well-known/agent-card.json
+Environment=RMN_CONFORMANCE_AGENT=http://127.0.0.1:8786/.well-known/agent-card.json
+Environment=AGENT_CARD_SIGNING_KEY=/home/emsenn/info/lib/emsenn/services/561-group/services/red-cup-engineering/services/software-development-services-section/services/software-mission-execution-service/data/agent-card-signing/ed25519-private.pem
+Environment=AGENT_CARD_JWKS=/home/emsenn/info/lib/emsenn/services/561-group/services/red-cup-engineering/services/software-development-services-section/services/software-mission-execution-service/content/agent-card-signing/jwks.json
+Environment=AGENT_CARD_SIGNING_KID=software-mission-execution-ed25519
+ExecStart=/home/emsenn/.config/nvm/versions/node/v24.13.1/bin/node ../../../web-services-section/services/a2a-services-section/services/a2a-contracted-agent-service/src/serve-contracted-agent.mjs --host 127.0.0.1 --port 8797 --base-url http://127.0.0.1:8797 --agent-card content/agent-cards/software-mission-execution.json --executor /home/emsenn/.config/nvm/versions/node/v24.13.1/bin/node --executor-arg bin/execute-a2a-message.mjs --timeout-ms 3600000 --max-bytes 134217728
+Restart=on-failure
+RestartSec=3
+NoNewPrivileges=true
+PrivateTmp=true
+TimeoutStopSec=30
+
+[Install]
+WantedBy=default.target

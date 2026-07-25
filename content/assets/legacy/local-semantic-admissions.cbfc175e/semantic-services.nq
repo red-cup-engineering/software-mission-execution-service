@@ -1,0 +1,2 @@
+<urn:ame:rmn-semantic-conformance> <urn:union:service-role:rmn-conformance> <http://127.0.0.1:8786/.well-known/agent-card.json> <urn:ame:software-mission-execution-service:service-admissions> .
+<urn:ame:rwil-rdf-services> <urn:union:service-role:rwil-rdf> <http://127.0.0.1:19763/.well-known/agent-card.json> <urn:ame:software-mission-execution-service:service-admissions> .

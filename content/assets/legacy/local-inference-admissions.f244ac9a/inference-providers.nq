@@ -1,0 +1,5 @@
+<urn:ame:bare-cedar-fog-npu-inference-team> <urn:inference-market:agent-card> <http://127.0.0.1:8795/.well-known/agent-card.json> <urn:ame:software-mission-execution-service:provider-admissions> .
+<urn:ame:claude-code-inference-team> <urn:inference-market:agent-card> <http://127.0.0.1:8789/.well-known/agent-card.json> <urn:ame:software-mission-execution-service:provider-admissions> .
+<urn:ame:gemini-inference-team> <urn:inference-market:agent-card> <http://127.0.0.1:8790/.well-known/agent-card.json> <urn:ame:software-mission-execution-service:provider-admissions> .
+<urn:ame:groq-inference-team> <urn:inference-market:agent-card> <http://127.0.0.1:8791/.well-known/agent-card.json> <urn:ame:software-mission-execution-service:provider-admissions> .
+<urn:ame:nvidia-inference-team> <urn:inference-market:agent-card> <http://127.0.0.1:8793/.well-known/agent-card.json> <urn:ame:software-mission-execution-service:provider-admissions> .
