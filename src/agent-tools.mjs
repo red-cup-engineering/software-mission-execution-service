@@ -13,12 +13,12 @@ function inside(root, requested = ".") {
   return path;
 }
 
-function walk(root, at = root, out = [], max = 600) {
-  if (out.length >= max || !existsSync(at)) return out;
+function walk(root, at = root, out = []) {
+  if (!existsSync(at)) return out;
   for (const entry of readdirSync(at, { withFileTypes: true })) {
-    if (out.length >= max || SKIP.has(entry.name)) continue;
+    if (SKIP.has(entry.name)) continue;
     const path = resolve(at, entry.name);
-    if (entry.isDirectory()) walk(root, path, out, max);
+    if (entry.isDirectory()) walk(root, path, out);
     else if (entry.isFile()) out.push(relative(root, path));
   }
   return out;
@@ -28,19 +28,19 @@ export function digest(bytes) {
   return createHash("sha256").update(bytes).digest("hex");
 }
 
-export function territorySnapshot(root, { maxFiles = 600 } = {}) {
-  const files = walk(root, root, [], maxFiles);
-  return { files, truncated: files.length >= maxFiles };
+export function territorySnapshot(root) {
+  const files = walk(root);
+  return { files, truncated: false };
 }
 
-export function createAgentTools({ root, verifyCommand, acceptanceCommand = verifyCommand, commands = {}, writablePaths = [], readablePaths = [], maxObservationBytes = 10000 } = {}) {
+export function createAgentTools({ root, verifyCommand, acceptanceCommand = verifyCommand, commands = {}, writablePaths = [], readablePaths = [] } = {}) {
   const changed = new Map();
   const admittedWrites = writablePaths.map((path) => relative(root, inside(root, path)));
   const writeAdmitted = (path) => !admittedWrites.length || admittedWrites.some((allowed) => path === allowed || path.startsWith(`${allowed}${sep}`));
   const admittedReads = readablePaths.map((path) => relative(root, inside(root, path)));
   const readAdmitted = (path) => !admittedReads.length || admittedReads.some((allowed) => path === allowed || path.startsWith(`${allowed}${sep}`));
-  const observe = (value) => JSON.stringify(value).slice(0, maxObservationBytes);
-  const checkObservation = (result) => ({ passed: result.passed, output: result.passed ? "exit=0" : result.output.slice(-8000) });
+  const observe = (value) => JSON.stringify(value);
+  const checkObservation = (result) => ({ passed: result.passed, output: result.passed ? "exit=0" : result.output });
   const checks = () => {
     const verification = runTestsCommand(root, verifyCommand);
     const acceptance = acceptanceCommand === verifyCommand ? verification : runTestsCommand(root, acceptanceCommand);
@@ -51,13 +51,33 @@ export function createAgentTools({ root, verifyCommand, acceptanceCommand = veri
     : { verification: { passed: false, output: "" }, acceptance: { passed: false, output: "" } };
   return {
     changed,
+    restoreChanges(changes = []) {
+      if (changed.size) throw new Error("checkpoint restoration requires a fresh process workspace");
+      for (const change of changes) {
+        const path = inside(root, change?.path), relativePath = relative(root, path);
+        if (!writeAdmitted(relativePath)) throw new Error(`checkpoint path is outside declared writable paths: ${relativePath}`);
+        const existed = existsSync(path), before = existed ? readFileSync(path) : Buffer.alloc(0);
+        if (existed !== change?.beforeExisted || `sha256:${digest(before)}` !== change?.beforeDigest) {
+          throw new Error(`checkpoint does not descend from the admitted source: ${relativePath}`);
+        }
+        const after = Buffer.from(change?.afterBytesBase64 ?? "", "base64");
+        if (`sha256:${digest(after)}` !== change?.afterDigest) throw new Error(`checkpoint after digest is invalid: ${relativePath}`);
+        mkdirSync(dirname(path), { recursive: true });
+        writeFileSync(path, after);
+        changed.set(relativePath, { existed, bytes: before, digest: digest(before) });
+      }
+      settledChecks = checks();
+      return { changedPaths: [...changed.keys()], ...settledChecks };
+    },
     execute(action) {
       const args = action?.args || {};
       if (action.action === "list_files") {
         const relativePath = relative(root, resolve(root, args.path || "."));
         if (relativePath !== "" && !readAdmitted(relativePath)) return observe({ error: `list_files path is outside declared readable paths: ${relativePath}` });
         const base = inside(root, args.path || ".");
-        return observe({ files: walk(root, base, [], Math.min(Number(args.max) || 250, 600)).filter(file => readAdmitted(file)) });
+        const files = walk(root, base).filter(file => readAdmitted(file));
+        const requested = Number(args.max);
+        return observe({ files: Number.isSafeInteger(requested) && requested >= 0 ? files.slice(0, requested) : files });
       }
       if (action.action === "search") {
         const query = String(args.query || "");
@@ -66,14 +86,15 @@ export function createAgentTools({ root, verifyCommand, acceptanceCommand = veri
         if (relativePath !== "" && !readAdmitted(relativePath)) return observe({ error: `search path is outside declared readable paths: ${relativePath}` });
         const base = inside(root, args.path || ".");
         const hits = [];
-        for (const file of walk(root, base, [], 600)) {
+        const requested = Number(args.max);
+        for (const file of walk(root, base)) {
           if (!readAdmitted(file)) continue;
           const path = inside(root, file);
           let text;
           try { text = readFileSync(path, "utf8"); } catch { continue; }
           for (const [index, line] of text.split("\n").entries()) {
-            if (line.toLowerCase().includes(query.toLowerCase())) hits.push({ path: file, line: index + 1, text: line.slice(0, 500) });
-            if (hits.length >= 80) return observe({ hits, truncated: true });
+            if (line.toLowerCase().includes(query.toLowerCase())) hits.push({ path: file, line: index + 1, text: line });
+            if (Number.isSafeInteger(requested) && requested >= 0 && hits.length >= requested) return observe({ hits, truncated: true, truncationAuthority: "caller" });
           }
         }
         return observe({ hits, truncated: false });
@@ -82,9 +103,10 @@ export function createAgentTools({ root, verifyCommand, acceptanceCommand = veri
         const path = inside(root, args.path);
         const relativePath = relative(root, path);
         if (!readAdmitted(relativePath)) return observe({ ok: false, error: `read path is outside declared readable paths: ${relativePath}` });
-        const start = Math.max(1, Number(args.startLine) || 1), end = Math.min(start + 399, Number(args.endLine) || start + 199);
+        const start = Math.max(1, Number(args.startLine) || 1), end = Number.isSafeInteger(Number(args.endLine)) ? Number(args.endLine) : undefined;
         const lines = readFileSync(path, "utf8").split("\n");
-        return observe({ path: relativePath, startLine: start, endLine: Math.min(end, lines.length), text: lines.slice(start - 1, end).join("\n") });
+        const last = end === undefined ? lines.length : Math.min(Math.max(start, end), lines.length);
+        return observe({ path: relativePath, startLine: start, endLine: last, text: lines.slice(start - 1, last).join("\n") });
       }
       if (action.action === "edit") {
         const path = inside(root, args.path), relativePath = relative(root, path);
@@ -145,7 +167,7 @@ export function createAgentTools({ root, verifyCommand, acceptanceCommand = veri
       if (action.action === "command") {
         const named = commands[String(args.name || "")];
         if (!named?.command) return observe({ terminal: true, error: `command is not admitted: ${args.name || "(missing)"}`, available: Object.keys(commands) });
-        const result = runTestsCommand(root, named.command, { timeoutMs: named.timeoutMs || 120000 });
+        const result = runTestsCommand(root, named.command);
         return observe({ command: args.name, passed: result.passed, output: result.output });
       }
       if (action.action === "test" || action.action === "finish") {

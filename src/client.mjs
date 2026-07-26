@@ -1,6 +1,6 @@
 import { randomUUID } from "node:crypto";
 import { Message, Role } from "@a2a-js/sdk";
-import { a2aResultParts, resumeRmnTask, sendRmnTask } from "@emsenn/a2a-rmn-task-client-service";
+import { a2aResultParts, resumeRmnTask, sendRmnTask, submitRmnTask } from "@emsenn/a2a-rmn-task-client-service";
 import { extractRmnPart, rmnPart } from "@emsenn/a2a-rmn-part-service";
 import { semanticId } from "@emsenn/rmn-semantic-conformance";
 import { relationalRwilDocument } from "@emsenn/rwil-rdf-services/client";
@@ -16,11 +16,55 @@ function agentUrl(value) {
 }
 const responseParts = a2aResultParts;
 
-export async function invokeSoftwareMissionOperation(request, { agentCardUrl, send = sendRmnTask, resume = resumeRmnTask, resumeTaskId, onTaskObservation, signal } = {}) {
-  const message = Message.toJSON({
+function missionRequest(mission, invocation) {
+  return record({
+    type: "SoftwareMissionExecutionRequest",
+    provider: ACTOR,
+    mission,
+    ...(typeof invocation === "string" && invocation !== "" ? { invocation } : {}),
+  });
+}
+
+function requestMessage(request) {
+  return Message.toJSON({
     messageId: randomUUID(), contextId: "", taskId: "", role: Role.ROLE_USER,
     parts: [rmnPart(operationBytes(request))], metadata: {}, extensions: [], referenceTaskIds: [],
   });
+}
+
+export async function submitSoftwareMission(mission, {
+  agentCardUrl,
+  submit = submitRmnTask,
+  onTaskObservation,
+  signal,
+  callbackUrl,
+  callbackToken,
+  invocation,
+} = {}) {
+  const request = missionRequest(mission, invocation);
+  const submission = await submit({
+    agentUrl: agentUrl(agentCardUrl),
+    message: requestMessage(request),
+    requireSignature: true,
+    returnImmediately: true,
+    onTaskObservation,
+    signal,
+    callbackUrl,
+    callbackToken,
+  });
+  return Object.freeze({
+    type: "SoftwareMissionSubmission",
+    request: request.id,
+    mission: mission.id,
+    taskId: submission.taskId,
+    task: submission.task,
+    agentCard: submission.agentCard,
+    authentication: submission.authentication,
+  });
+}
+
+export async function invokeSoftwareMissionOperation(request, { agentCardUrl, send = sendRmnTask, resume = resumeRmnTask, resumeTaskId, onTaskObservation, signal } = {}) {
+  const message = requestMessage(request);
   const address = agentUrl(agentCardUrl);
   const transport = resumeTaskId
     ? await resume({ agentUrl: address, taskId: resumeTaskId, inputNi: request.id, requireSignature: true, onTaskObservation, signal })
@@ -31,25 +75,36 @@ export async function invokeSoftwareMissionOperation(request, { agentCardUrl, se
   return Object.freeze({ response, transport: { inputNi: transport.inputNi, outputNi: transport.outputNi, agentCard: transport.agentCard, authentication: { agentCardSignatureVerified: true, required: true } } });
 }
 
-export async function executeSoftwareMission(mission, options = {}) {
-  const request = record({ type: "SoftwareMissionExecutionRequest", provider: ACTOR, mission });
+/** Hire the supplier and return its signed proposal without granting the
+ * supplier mutation authority over customer material. */
+export async function proposeSoftwareMission(mission, options = {}) {
+  const request = missionRequest(mission, options.invocation);
   const { response, transport } = await invokeSoftwareMissionOperation(request, options);
-  if (response.type !== "SoftwareMissionExecutionResult" || response.mission !== mission.id) throw new Error("software mission provider returned the wrong result type or mission");
-  const customerInduction = induceVerifiedMissionProposal(mission, response.result);
+  if (response.type !== "SoftwareMissionExecutionResult" || response.mission !== mission.id) {
+    throw new Error("software mission provider returned the wrong result type or mission");
+  }
+  return Object.freeze({
+    ...response.result,
+    executionProvider: ACTOR,
+    executionReceipt: transport,
+  });
+}
+
+export async function executeSoftwareMission(mission, options = {}) {
+  const proposed = await proposeSoftwareMission(mission, options);
+  const customerInduction = induceVerifiedMissionProposal(mission, proposed);
   const outcome = customerInduction
     ? {
-        ...response.result.outcome,
+        ...proposed.outcome,
         integrated: true,
         inductionRequired: false,
         classification: "integrated",
         integration: { integrated: true, receiver: "software-mission-customer-client" },
       }
-    : response.result.outcome;
+    : proposed.outcome;
   return Object.freeze({
-    ...response.result,
+    ...proposed,
     outcome,
-    ...(customerInduction ? { providerOutcome: response.result.outcome, customerInduction } : {}),
-    executionProvider: ACTOR,
-    executionReceipt: transport,
+    ...(customerInduction ? { providerOutcome: proposed.outcome, customerInduction } : {}),
   });
 }

@@ -15,7 +15,7 @@
       "law": "ni:///sha-256;qTArgykFxDwW-NnKtb-NegnwJBZ36VocGBcd0V-sCoc"
     },
     "operation": "execute-software-mission",
-    "description": "Execute one bounded software mission through purchased inference, isolated tools, independent acceptance, and durable trajectory memory."
+    "description": "Execute a software mission through purchased inference, isolated tools, behavioral acceptance, and durable trajectory memory."
   },
   "denominations": [
     "relative-resolution-milliquanta-v1"

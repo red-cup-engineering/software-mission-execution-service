@@ -40,18 +40,30 @@ async function appendReceipt(path, record) {
   await appendFile(path, `${JSON.stringify(record)}\n`, { encoding: "utf8", mode: 0o600 });
 }
 
-async function terminalReceipts(path) {
+async function receiptState(path) {
   let source;
   try {
     source = await readFile(path, "utf8");
   } catch (error) {
-    if (error?.code === "ENOENT") return new Map();
+    if (error?.code === "ENOENT") return { intents: new Map(), settlements: new Map(), terminal: new Map() };
     throw error;
   }
-  return new Map(source.split("\n").filter(Boolean)
-    .map((line) => JSON.parse(line))
-    .filter((record) => ["X402PaidSoftwareMissionReceipt", "X402PaidSoftwareMissionRefusal"].includes(record?.type))
-    .map((record) => [record.invocation, record]));
+  const records = source.split("\n").filter(Boolean).map((line) => JSON.parse(line));
+  return {
+    intents: new Map(records
+      .filter((record) => record?.type === "X402PaidSoftwareMissionIntent")
+      .map((record) => [record.invocation, record])),
+    settlements: new Map(records
+      .filter((record) => record?.type === "X402SettlementReceipt")
+      .map((record) => [record.invocation, record])),
+    terminal: new Map(records
+      .filter((record) => [
+        "X402PaidSoftwareMissionReceipt",
+        "X402PaidSoftwareMissionRecoveryReceipt",
+        "X402PaidSoftwareMissionRefusal",
+      ].includes(record?.type))
+      .map((record) => [record.invocation, record])),
+  };
 }
 
 export async function main() {
@@ -67,8 +79,39 @@ export async function main() {
       || offer.price.payTo?.toLowerCase() !== settlement.split(":").at(-1).toLowerCase()) {
     throw new Error("published offer drifted from the hired pricing provider");
   }
-  const pending = new Map();
-  const terminal = await terminalReceipts(receiptPath);
+  const recovered = await receiptState(receiptPath);
+  const pending = new Map(recovered.intents);
+  const settlements = new Map(recovered.settlements);
+  const terminal = new Map(recovered.terminal);
+  const running = new Set();
+  async function executePaidMission(invocation, intent, settlementEvidence, recovery = false) {
+    if (running.has(invocation)) throw new Error("paid mission obligation is already executing");
+    running.add(invocation);
+    try {
+      const result = await executeSoftwareMission(intent.mission, {
+        agentCardUrl: required("SOFTWARE_MISSION_AGENT_CARD_URL"),
+      });
+      const receipt = {
+        type: recovery ? "X402PaidSoftwareMissionRecoveryReceipt" : "X402PaidSoftwareMissionReceipt",
+        invocation,
+        settlement: settlementEvidence,
+        result,
+      };
+      terminal.set(invocation, receipt);
+      await appendReceipt(receiptPath, receipt);
+    } catch (error) {
+      const refusal = {
+        type: "X402PaidSoftwareMissionRefusal",
+        invocation,
+        settlement: settlementEvidence,
+        reason: error instanceof Error ? error.message : String(error),
+      };
+      terminal.set(invocation, refusal);
+      await appendReceipt(receiptPath, refusal);
+    } finally {
+      running.delete(invocation);
+    }
+  }
   const boundary = createExactEvmPaymentBoundary({
     network,
     facilitatorUrl: required("X402_FACILITATOR_URL"),
@@ -92,28 +135,17 @@ export async function main() {
       const invocation = settlementEvidence.invocation;
       const intent = pending.get(invocation);
       if (!intent) throw new Error("settled payment has no exact mission intent");
-      await appendReceipt(receiptPath, { type: "X402SettlementReceipt", invocation, settlement: settlementEvidence, pricing: priced.result });
-      try {
-        const result = await executeSoftwareMission(intent.mission, {
-          agentCardUrl: required("SOFTWARE_MISSION_AGENT_CARD_URL"),
-        });
-        const receipt = { type: "X402PaidSoftwareMissionReceipt", invocation, result };
-        terminal.set(invocation, receipt);
-        await appendReceipt(receiptPath, receipt);
-      } catch (error) {
-        const refusal = { type: "X402PaidSoftwareMissionRefusal", invocation, reason: error instanceof Error ? error.message : String(error) };
-        terminal.set(invocation, refusal);
-        await appendReceipt(receiptPath, refusal);
-      } finally {
-        pending.delete(invocation);
-      }
+      const settlementReceipt = { type: "X402SettlementReceipt", invocation, settlement: settlementEvidence, pricing: priced.result };
+      settlements.set(invocation, settlementReceipt);
+      await appendReceipt(receiptPath, settlementReceipt);
+      await executePaidMission(invocation, intent, settlementEvidence);
     },
   });
   const app = express();
   app.set("trust proxy", "loopback");
   app.use(express.json({ limit: process.env.JSON_BODY_LIMIT ?? "1mb" }));
   app.get("/x402/software-mission-execution/offer", (_request, response) => response.json({ ...offer, pricing: priced.result }));
-  app.post(resource, async (request, response, next) => {
+  async function admitCustomerAuthority(request, response, next) {
     try {
       const authorization = request.get("authorization") ?? "";
       const matched = /^OCapN (urn:ocapn:sturdyref:[A-Za-z0-9_-]{43})$/u.exec(authorization);
@@ -129,7 +161,8 @@ export async function main() {
     } catch (error) {
       response.status(403).json({ ok: false, refusal: { type: "OCapNSturdyRefAdmissionRefusal", reason: error.message } });
     }
-  });
+  }
+  app.post(resource, admitCustomerAuthority);
   app.use(boundary.middleware);
   app.post(resource, async (request, response) => {
     const invocation = x402PaymentIdentity(request.get("payment-signature"));
@@ -141,7 +174,37 @@ export async function main() {
   app.get("/x402/software-mission-execution/result/:id", (request, response) => {
     if (!/^[0-9a-f]{64}$/u.test(request.params.id)) return response.status(400).json({ ok: false, refusal: { type: "InvalidInvocationIdentity" } });
     const invocation = `sha256:${request.params.id}`;
-    return response.status(terminal.has(invocation) ? 200 : 202).json({ ok: true, invocation, status: terminal.has(invocation) ? "terminal" : "pending", terminal: terminal.get(invocation) ?? null });
+    const recoveryPending = running.has(invocation);
+    const isTerminal = terminal.has(invocation) && !recoveryPending;
+    return response.status(isTerminal ? 200 : 202).json({
+      ok: true,
+      invocation,
+      status: recoveryPending ? "recovery-pending" : isTerminal ? "terminal" : "pending",
+      terminal: isTerminal ? terminal.get(invocation) : null,
+    });
+  });
+  app.post("/x402/software-mission-execution/recover/:id", admitCustomerAuthority, (request, response) => {
+    if (!/^[0-9a-f]{64}$/u.test(request.params.id)) {
+      return response.status(400).json({ ok: false, refusal: { type: "InvalidInvocationIdentity" } });
+    }
+    const invocation = `sha256:${request.params.id}`;
+    const intent = pending.get(invocation);
+    const settlementReceipt = settlements.get(invocation);
+    const prior = terminal.get(invocation);
+    if (!intent || settlementReceipt?.settlement?.success !== true
+        || prior?.type !== "X402PaidSoftwareMissionRefusal") {
+      return response.status(409).json({ ok: false, refusal: { type: "PaidObligationNotRecoverable" } });
+    }
+    if (running.has(invocation)) {
+      return response.status(202).json({ ok: true, invocation, status: "recovery-pending" });
+    }
+    running.add(invocation);
+    Promise.resolve().then(() => {
+      running.delete(invocation);
+      executePaidMission(invocation, intent, settlementReceipt.settlement, true)
+        .catch((error) => process.stderr.write(`${error.stack ?? error.message}\n`));
+    });
+    return response.status(202).json({ ok: true, invocation, status: "recovery-started" });
   });
   const host = process.env.HOST ?? "127.0.0.1";
   const port = Number(process.env.PORT ?? "15629");

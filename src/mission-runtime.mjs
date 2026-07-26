@@ -1,14 +1,16 @@
-import { createHash, randomUUID } from "node:crypto";
-import { cpSync, existsSync, mkdtempSync, readFileSync, rmSync, statSync } from "node:fs";
+import { createHash } from "node:crypto";
+import { cpSync, existsSync, mkdirSync, mkdtempSync, readFileSync, rmSync, statSync } from "node:fs";
+import { execFileSync } from "node:child_process";
 import { join, relative, resolve, sep } from "node:path";
 import { tmpdir } from "node:os";
 import { createAgentTools, territorySnapshot } from "./agent-tools.mjs";
 import { dispatchBatch as defaultDispatch } from "./market-client.mjs";
 import { runTestsCommand } from "@emsenn/sandbox-command-execution-service";
-import { appendSoftwareTrajectory, readSoftwareTrajectoryPromotion, recallSoftwareTrajectories, resolveInducedSoftwareTrajectory, trajectoryFingerprint, trajectoryRecipeFingerprint } from "@emsenn/software-trajectory-memory-service/client";
+import { appendSoftwareMissionCheckpoint, appendSoftwareTrajectory, readSoftwareMissionCheckpoint, readSoftwareMissionMemoryContext, readSoftwareTrajectoryPromotion, recallSoftwareTrajectories, resolveInducedSoftwareTrajectory, trajectoryFingerprint, trajectoryRecipeFingerprint } from "@emsenn/software-trajectory-memory-service/client";
 import { buildCodingContextPacket } from "@emsenn/coding-context-projection-service";
 import { resolutionCreditPolicy, validateConsiderationPolicy } from "@emsenn/inference-work-lot-service/consideration";
 import { executeAcceptanceCapsule, loadAcceptanceCapsule, materializeAcceptanceCapsule, validateAcceptanceCapsule } from "@emsenn/protected-acceptance-service/client";
+import { githubApi } from "@emsenn/github-services-section";
 
 export const ACTION_SCHEMA = {
   type: "object",
@@ -16,15 +18,12 @@ export const ACTION_SCHEMA = {
   properties: {
     action: { type: "string", enum: ["list_files", "search", "read", "edit", "create", "command", "test", "finish"] },
     args: { type: "object", additionalProperties: true },
-    reason: { type: "string", minLength: 5, maxLength: 500 },
+    reason: { type: "string", minLength: 1 },
   },
   additionalProperties: false,
 };
 
-const CURRENT_WRITABLE_BYTE_CAP = 12_000;
-const SMALL_EDIT_BLOCK_BYTE_CAP = 4_096;
-
-function workspaceWritableEvidence(workspace, writablePaths = [], byteCap = CURRENT_WRITABLE_BYTE_CAP) {
+function workspaceWritableEvidence(workspace, writablePaths = []) {
   return [...new Set(writablePaths.filter((path) => typeof path === "string" && path.length > 0))]
     .sort()
     .map((path) => {
@@ -42,8 +41,8 @@ function workspaceWritableEvidence(workspace, writablePaths = [], byteCap = CURR
         confined: true,
         byteLength: bytes.byteLength,
         digest: createHash("sha256").update(bytes).digest("hex"),
-        text: bytes.subarray(0, byteCap).toString("utf8"),
-        truncated: bytes.byteLength > byteCap,
+        text: bytes.toString("utf8"),
+        truncated: false,
       };
     });
 }
@@ -57,29 +56,31 @@ function currentSearchAnchors(evidence, relevance = "") {
   const counts = new Map();
   const lines = evidence.text.split("\n");
   for (let index = 0; index < lines.length; index += 1) {
-    for (let width = 1; width <= 4 && index + width <= lines.length; width += 1) {
-      const source = lines.slice(index, index + width).join("\n");
-      if (!source || Buffer.byteLength(source) > SMALL_EDIT_BLOCK_BYTE_CAP) continue;
-      const prior = counts.get(source);
-      counts.set(source, prior ? { ...prior, count: prior.count + 1 } : { count: 1, index, width });
-    }
+    const source = lines[index];
+    if (!source) continue;
+    const prior = counts.get(source);
+    counts.set(source, prior ? { ...prior, count: prior.count + 1 } : { count: 1, index });
   }
   const wanted = relevanceTokens(relevance);
-  return [...counts]
+  const anchors = [...counts]
     .filter(([, { count }]) => count === 1)
-    .map(([line, { index, width }]) => ({
+    .map(([line, { index }]) => ({
       line,
       index,
-      width,
       score: [...relevanceTokens(line)].reduce((total, token) => total + (wanted.has(token) ? 1 : 0), 0),
-      leadingScore: [...relevanceTokens(lines[index])].reduce((total, token) => total + (wanted.has(token) ? 1 : 0), 0),
     }))
-    .sort((left, right) => right.score - left.score || right.leadingScore - left.leadingScore || right.width - left.width || left.index - right.index)
-    .slice(0, 2)
+    .sort((left, right) => right.score - left.score || left.index - right.index)
     .map(({ line }) => ({
-      id: `a-${createHash("sha256").update(line).digest("hex").slice(0, 16)}`,
+      id: `a-${createHash("sha256").update(line).digest("hex")}`,
       search: line,
     }));
+  if (evidence.text.length > 0 && !anchors.some(({ search }) => search === evidence.text)) {
+    anchors.push({
+      id: `a-${createHash("sha256").update(evidence.text).digest("hex")}`,
+      search: evidence.text,
+    });
+  }
+  return anchors;
 }
 
 function editBlockSchema({ targetMissing = false, allowedAnchors = [] } = {}) {
@@ -91,10 +92,8 @@ function editBlockSchema({ targetMissing = false, allowedAnchors = [] } = {}) {
         ? { type: "string", const: "absent" }
         : allowedAnchors.length
           ? { type: "string", enum: allowedAnchors.map(({ id }) => id) }
-          : { type: "string", pattern: "^a-[0-9a-f]{16}$" },
-      // Provider grammars differ on string-length keywords. The host admits
-      // nonempty bounded bytes against the current artifact after generation.
-      replace: { type: "string" },
+          : { type: "string", pattern: "^a-[0-9a-f]{64}$" },
+      replace: { type: "string", minLength: 1 },
     },
     additionalProperties: false,
   };
@@ -104,7 +103,8 @@ export function softwareEditActionSchema(writablePaths = [], workspaceEvidence =
   const paths = [...new Set(writablePaths.filter((path) => typeof path === "string" && path.length > 0))];
   const existing = paths.filter((path) => workspaceEvidence.find((artifact) => artifact?.path === path)?.exists !== false);
   const absent = paths.filter((path) => workspaceEvidence.find((artifact) => artifact?.path === path)?.exists === false);
-  const editArgumentAlternatives = existing.map((path) => {
+  const editArgs = {
+    oneOf: existing.map((path) => {
       const evidence = workspaceEvidence.find((artifact) => artifact?.path === path);
       const block = editBlockSchema({ allowedAnchors: currentSearchAnchors(evidence, relevance) });
       return {
@@ -112,49 +112,84 @@ export function softwareEditActionSchema(writablePaths = [], workspaceEvidence =
         properties: { path: path ? { type: "string", const: path } : { type: "string", minLength: 1 }, blocks: block },
         additionalProperties: false,
       };
-    });
-  const editArgs = editArgumentAlternatives.length === 1
-    ? editArgumentAlternatives[0]
-    : { oneOf: editArgumentAlternatives };
+    }),
+  };
   const alternatives = [];
   if (existing.length) alternatives.push({
-    type: "object",
-    properties: { action: { type: "string", const: "edit" }, args: editArgs },
-    required: ["action", "args"],
-    additionalProperties: false,
+    properties: { action: { type: "string", const: "edit" }, args: editArgs }, required: ["action", "args"],
   });
   if (absent.length) alternatives.push({
-    type: "object",
     properties: {
       action: { type: "string", const: "create" },
-      args: absent.length === 1 ? {
+      args: { oneOf: absent.map((path) => ({
         type: "object", required: ["path", "content"],
-        properties: { path: { type: "string", const: absent[0] }, content: { type: "string" } },
-        additionalProperties: false,
-      } : { oneOf: absent.map((path) => ({
-        type: "object", required: ["path", "content"],
-        properties: { path: { type: "string", const: path }, content: { type: "string" } },
+        properties: { path: { type: "string", const: path }, content: { type: "string", minLength: 1 } },
         additionalProperties: false,
       })) },
-    },
-    required: ["action", "args"],
-    additionalProperties: false,
+    }, required: ["action", "args"],
   });
-  if (alternatives.length === 1) return alternatives[0];
   return {
     type: "object",
+    required: ["action", "args"],
+    properties: {
+      action: { type: "string", enum: [...(existing.length ? ["edit"] : []), ...(absent.length ? ["create"] : [])] },
+      args: {},
+    },
     oneOf: alternatives,
+    additionalProperties: false,
   };
 }
 
-const SYSTEM = `You are the inference interior of one bounded software process node operating an isolated copy of one admitted territory. Invoke exactly one tool once using the contracted JSON. Available actions:
+const SYSTEM = `You are one hired inference interior of a durable software process node operating an isolated copy of one admitted territory. Reason freely in your native text, then conclude with one Markdown tool proposal that the customer deterministically projects and validates. The reasoning is retained as trajectory evidence and is never treated as the tool call. Use TOOL: create plus PATH: and CONTENT: followed by one fenced source block; or TOOL: edit plus PATH: and paired SEARCH:/REPLACE: fenced blocks; or TOOL: read/list_files/search/test/finish with the plainly labeled arguments needed. For an inquiry, finish with TOOL: finish followed by the complete answer between ---BEGIN WORK PRODUCT--- and ---END WORK PRODUCT---. JSON is neither required nor preferred. Available actions:
 list_files {path?,max?}; search {query,path?}; read {path,startLine?,endLine?}; edit {path,blocks}; create {path,content}; command {name}; test {}; finish {summary?}.
-Include only the arguments used by the selected action. For edit, blocks are one {search,replace} object or a nonempty ordered array of small exact blocks; do not put marker text inside either field. Search is an exact nonempty current substring. The host decodes the JSON string before applying replace: source-language quote characters belong directly in the decoded replacement; never add a literal backslash before them. For a target marked absent, use create with nonempty content. Never replace an entire source artifact. The host presents current writable bytes again on every contact; work from those bytes, not an earlier packet. A readout is one transition and the next contact receives its observation. You have no shell. Do not explore operational data records unless the objective names them. Make the smallest correct change. The host automatically runs the declared verification after every edit. Never claim success without a passing verification result.`;
+Include only the arguments used by the selected action. For edit, blocks are one {search,replace} object or a nonempty ordered array of exact blocks; do not put marker text inside either field. Search is an exact nonempty current substring. For a target marked absent, use create with nonempty content. The host presents current writable bytes again on every contact; work from those bytes, not an earlier packet. A readout is one transition and the next contact receives its observation. You have no shell. Do not explore operational data records unless the objective names them. Make the complete coherent change required by the objective. The host automatically runs the declared verification after every edit. Never claim success without a passing verification result.`;
+
+function extractJsonRecord(text) {
+  const candidates = [];
+  for (const match of String(text).matchAll(/```(?:json)?\s*([\s\S]*?)```/giu)) candidates.push(match[1]);
+  candidates.push(String(text).trim());
+  for (const candidate of candidates) {
+    try {
+      const value = JSON.parse(candidate);
+      if (value && typeof value === "object" && !Array.isArray(value)) return value;
+    } catch { /* Try the next deterministic carrier. */ }
+  }
+  return null;
+}
+
+function extractMarkdownAction(text) {
+  const source = String(text);
+  const tool = source.match(/(?:^|\n)\s*TOOL\s*:\s*([a-z_]+)\s*(?:\n|$)/iu)?.[1]?.toLowerCase();
+  if (!tool) return null;
+  const aliases = { read_file: "read", list_dir: "list_files", edit_file: "edit", create_file: "create", run_test: "test" };
+  const action = aliases[tool] ?? tool;
+  const path = source.match(/(?:^|\n)\s*PATH\s*:\s*([^\n]+)\s*(?:\n|$)/iu)?.[1]?.trim();
+  const query = source.match(/(?:^|\n)\s*QUERY\s*:\s*([^\n]+)\s*(?:\n|$)/iu)?.[1]?.trim();
+  const fencedAfter = (label) => source.match(new RegExp("(?:^|\\n)\\s*" + label + "\\s*:\\s*\\n\\s*```(?:[^\\n]*)\\n([\\s\\S]*?)\\n```", "iu"))?.[1];
+  if (action === "create" && path) {
+    const content = fencedAfter("CONTENT");
+    return typeof content === "string" ? { action, args: { path, content }, reason: "provider proposed a source creation in natural text" } : null;
+  }
+  if (action === "edit" && path) {
+    const search = fencedAfter("SEARCH"), replace = fencedAfter("REPLACE");
+    return typeof search === "string" && typeof replace === "string" ? { action, args: { path, blocks: [{ search, replace }] }, reason: "provider proposed a source edit in natural text" } : null;
+  }
+  if (["read", "list_files"].includes(action)) return { action, args: path ? { path } : {}, reason: "provider proposed an observation in natural text" };
+  if (action === "search" && query) return { action, args: { query, ...(path ? { path } : {}) }, reason: "provider proposed a search in natural text" };
+  if (action === "finish") {
+    const begin = "---BEGIN WORK PRODUCT---", end = "---END WORK PRODUCT---";
+    const from = source.lastIndexOf(begin), to = source.lastIndexOf(end);
+    const summary = from >= 0 && to > from ? source.slice(from + begin.length, to).trim() : "";
+    return { action, args: summary ? { summary } : {}, reason: "provider proposed a control transition in natural text" };
+  }
+  if (action === "test") return { action, args: {}, reason: "provider proposed a control transition in natural text" };
+  return null;
+}
 
 function parseAction(record) {
   if (!record || typeof record.text !== "string") return null;
-  let value;
-  try { value = JSON.parse(record.text); } catch { return null; }
+  const value = extractJsonRecord(record.text);
+  if (!value) return extractMarkdownAction(record.text);
   const aliases = { read_file: "read", list_dir: "list_files", edit_file: "edit", create_file: "create", run_test: "test", apply_patch: "edit" };
   if (typeof value.action === "string") return { action: aliases[value.action] || value.action, args: value.args && typeof value.args === "object" ? value.args : Object.fromEntries(Object.entries(value).filter(([key]) => !["action", "reason"].includes(key))), reason: value.reason || "provider selected this next tool move" };
   if (typeof value.command === "string") return { action: aliases[value.command] || value.command, args: Object.fromEntries(Object.entries(value).filter(([key]) => !["command", "reason"].includes(key))), reason: value.reason || "provider selected this next tool move" };
@@ -184,8 +219,6 @@ function validateCurrentEdit(action, processNode, writablePaths) {
   for (const block of blocks) {
     if (!block || typeof block.search !== "string" || typeof block.replace !== "string" || !block.replace.length) return "each edit block requires nonempty string replacement and string search";
     if (block.search === "") return "edit search must be a nonempty exact current substring";
-    if (Buffer.byteLength(block.search) > SMALL_EDIT_BLOCK_BYTE_CAP || (evidence.exists && Buffer.byteLength(block.replace) > SMALL_EDIT_BLOCK_BYTE_CAP)) return `existing-file edit blocks may carry at most ${SMALL_EDIT_BLOCK_BYTE_CAP} bytes per side`;
-    if (block.search === current) return "complete-source replacement is not a lawful small edit block";
     const at = current.indexOf(block.search);
     if (at < 0) return "edit search is not present in the evolving current source";
     if (current.indexOf(block.search, at + block.search.length) >= 0) return "edit search is ambiguous in the evolving current source";
@@ -199,7 +232,6 @@ function validateCurrentCreate(action, processNode, writablePaths) {
   const path = action.args?.path;
   if (typeof path !== "string" || !writablePaths.includes(path)) return `create path is outside declared writable paths: ${path || "(missing)"}`;
   if (typeof action.args?.content !== "string" || !action.args.content.length) return "create requires nonempty string content";
-  if (Buffer.byteLength(action.args.content) > CURRENT_WRITABLE_BYTE_CAP) return `create content may carry at most ${CURRENT_WRITABLE_BYTE_CAP} bytes`;
   const evidence = workspaceWritableEvidence(processNode.workspace, [path])[0];
   if (!evidence?.confined) return "create path escapes the process-node workspace";
   if (evidence.exists) return "create requires a target absent from the current process-node workspace";
@@ -225,12 +257,45 @@ function providerNativeReceipt(record) {
     : null;
 }
 
+function stableIdentity(kind, value) {
+  return `urn:ame:software-mission-execution-service:${kind}:${createHash("sha256").update(JSON.stringify(value)).digest("base64url")}`;
+}
+
+function checkpointChanges(tools) {
+  return tools.changes().map((change) => ({
+    path: change.path,
+    beforeExisted: change.before.existed,
+    beforeDigest: `sha256:${change.before.digest}`,
+    afterDigest: `sha256:${change.afterDigest}`,
+    afterBytesBase64: change.after.toString("base64"),
+  }));
+}
+
 function copyTerritory(source) {
   const parent = mkdtempSync(join(tmpdir(), "union-dev-process-node-")), workspace = join(parent, "territory");
   cpSync(source, workspace, { recursive: true, filter: (path) => !path.split(/[\\/]/).some((part) => [".git", "node_modules", ".lake", "dist", "coverage"].includes(part)) });
   const installedDependencies = join(source, "node_modules");
   if (existsSync(installedDependencies)) cpSync(installedDependencies, join(workspace, "node_modules"), { recursive: true, dereference: true });
   return { parent, workspace };
+}
+
+async function materializeMissionSource(input, { github = githubApi() } = {}) {
+  if (!input.source) return { territory: resolve(input.territory), descriptor: { kind: "local-territory", path: resolve(input.territory) }, cleanup: null };
+  const source = input.source;
+  if (source.kind !== "github-repository" || !/^[A-Za-z0-9_.-]+\/[A-Za-z0-9_.-]+$/u.test(source.repository ?? "") || !/^[0-9a-f]{40}$/u.test(source.commit ?? "")) {
+    throw new Error("mission source must be a github-repository with owner/name repository and immutable 40-hex commit");
+  }
+  const parent = mkdtempSync(join(tmpdir(), "union-mission-source-"));
+  const territory = join(parent, "territory"), archive = join(parent, "source.tar.gz");
+  mkdirSync(territory);
+  try {
+    await github.downloadRepositoryTarball(source.repository, source.commit, archive);
+    execFileSync("tar", ["-xzf", archive, "-C", territory, "--strip-components=1"], { stdio: "pipe" });
+    return { territory, descriptor: { kind: source.kind, repository: source.repository, commit: source.commit }, cleanup: parent };
+  } catch (error) {
+    rmSync(parent, { recursive: true, force: true });
+    throw error;
+  }
 }
 
 export function inferenceContextProjection(contextPacket) {
@@ -246,39 +311,24 @@ export function inferenceContextProjection(contextPacket) {
       acceptanceCommand: contextPacket.machineChecks?.acceptanceCommand,
       baselineVerification: contextPacket.machineChecks?.baselineVerification && {
         passed: contextPacket.machineChecks.baselineVerification.passed,
-        output: String(contextPacket.machineChecks.baselineVerification.output ?? "").slice(-2400),
+        output: String(contextPacket.machineChecks.baselineVerification.output ?? ""),
       },
       baselineAcceptance: contextPacket.machineChecks?.acceptanceCommand === contextPacket.machineChecks?.verifyCommand
         ? { passed: contextPacket.machineChecks?.baselineAcceptance?.passed, sameAsBaselineVerification: true }
         : contextPacket.machineChecks?.baselineAcceptance && {
             passed: contextPacket.machineChecks.baselineAcceptance.passed,
-            output: String(contextPacket.machineChecks.baselineAcceptance.output ?? "").slice(-2400),
+            output: String(contextPacket.machineChecks.baselineAcceptance.output ?? ""),
           },
     },
     acceptanceTestVectors: contextPacket.acceptanceTestVectors,
     acceptanceAuthority: contextPacket.acceptanceAuthority,
     lane: contextPacket.lane,
     targetArtifacts: contextPacket.targetArtifacts,
-    evidenceArtifacts: contextPacket.evidenceArtifacts.map((artifact) => (
-      artifact.role === "machine-check-target"
-        ? {
-            path: artifact.path,
-            role: artifact.role,
-            digest: artifact.digest,
-            bytes: artifact.bytes,
-            truncated: artifact.truncated,
-            heldByHost: true,
-          }
-        : artifact
-    )),
+    evidenceArtifacts: contextPacket.evidenceArtifacts,
     omittedArtifacts: contextPacket.omittedArtifacts,
     priorVerifiedKnowledge: (contextPacket.priorVerifiedKnowledge ?? [])
       .filter((memory) => memory.taskClass && memory.taskClass === contextPacket.identity?.taskClass),
-    // Market/transport refusals steer the host's next procurement; they are
-    // not software evidence and must not recursively enlarge later prompts.
-    priorResidueKnowledge: (contextPacket.priorResidueKnowledge ?? []).filter((residue) => (
-      /schema-assay|invalid-action|malformed-action/u.test(residue?.dominantRefusal ?? "")
-    )),
+    priorResidueKnowledge: contextPacket.priorResidueKnowledge ?? [],
     constraints: contextPacket.constraints,
     firstMoves: contextPacket.firstMoves,
     packetQuality: contextPacket.packetQuality,
@@ -291,9 +341,7 @@ function outputContractLearning(outputSchema, residueKnowledge = []) {
   const argsAlternatives = Array.isArray(args.oneOf) ? args.oneOf : [args];
   const priorAssayProblems = [...new Set(residueKnowledge
     .flatMap((residue) => Array.isArray(residue?.latestProblems) && residue.latestProblems.length ? residue.latestProblems : Array.isArray(residue?.problems) ? residue.problems : [])
-    .filter((problem) => typeof problem === "string" && problem)
-    .map((problem) => problem.slice(0, 1000)))]
-    .slice(0, 32);
+    .filter((problem) => typeof problem === "string" && problem))];
   return {
     type: "CurrentOutputContractLearning",
     currentContract: {
@@ -312,9 +360,7 @@ function actionContractLearning(residueKnowledge = []) {
   const priorActionRefusals = [...new Set(residueKnowledge
     .filter((residue) => /invalid-action|malformed-action/u.test(residue?.dominantRefusal ?? ""))
     .flatMap((residue) => Array.isArray(residue?.latestReasons) && residue.latestReasons.length ? residue.latestReasons : Array.isArray(residue?.reasons) ? residue.reasons : [])
-    .filter((reason) => typeof reason === "string" && reason)
-    .map((reason) => reason.slice(0, 1000)))]
-    .slice(0, 16);
+    .filter((reason) => typeof reason === "string" && reason))];
   return {
     type: "CurrentActionContractLearning",
     priorActionRefusals,
@@ -328,52 +374,23 @@ function actionContractLearning(residueKnowledge = []) {
 }
 
 export function processNodePrompt(processNode, contextPacket, outputSchema = ACTION_SCHEMA) {
-  const compactObservation = (source) => {
-    let value;
-    try { value = JSON.parse(source); } catch { return String(source).slice(-2400); }
-    const verification = value?.verification;
-    const acceptance = value?.acceptance;
-    return JSON.stringify({
-      ...(value?.ok != null ? { ok: value.ok } : {}),
-      ...(value?.terminal != null ? { terminal: value.terminal } : {}),
-      ...(value?.error ? { error: String(value.error).slice(-1200) } : {}),
-      ...(value?.editBlocks != null ? { editBlocks: value.editBlocks } : {}),
-      ...(verification ? {
-        verification: {
-          passed: verification.passed === true,
-          output: String(verification.output ?? "").slice(-2400),
-        },
-      } : {}),
-      ...(acceptance ? {
-        acceptance: acceptance.output === verification?.output
-          ? { passed: acceptance.passed === true, sameAsVerification: true }
-          : { passed: acceptance.passed === true, output: String(acceptance.output ?? "").slice(-1200) },
-      } : {}),
-    });
-  };
-  const recent = processNode.observations.slice(-5).map((x, i) => `Observation ${i + 1}: ${compactObservation(x)}`).join("\n");
+  const recent = processNode.observations.map((x, i) => `Observation ${i + 1}: ${x}`).join("\n");
   const writablePaths = contextPacket.lane?.writablePaths ?? [];
   const hasWorkspace = typeof processNode.workspace === "string";
   const writableWorkspace = hasWorkspace ? workspaceWritableEvidence(processNode.workspace, writablePaths) : [];
-  const actionRelevance = [contextPacket.objective, ...processNode.observations.slice(-3)].join("\n");
+  const actionRelevance = [contextPacket.objective, ...processNode.observations].join("\n");
   const projection = inferenceContextProjection(contextPacket);
   if (hasWorkspace) projection.evidenceArtifacts = projection.evidenceArtifacts.filter((artifact) => !writablePaths.includes(artifact.path));
   return [
     "CODING CONTEXT PACKET (host-compiled; initial evidence is retained for purpose and oracle context):",
     JSON.stringify(projection),
-    "CURRENT ADMITTED WRITABLE WORKSPACE (refreshed at this contact; UTF-8 prefix is deterministically capped per artifact):",
+    "CURRENT ADMITTED WRITABLE WORKSPACE (refreshed at this contact):",
     JSON.stringify({
-      byteCap: CURRENT_WRITABLE_BYTE_CAP,
       artifacts: writableWorkspace.map((artifact) => ({
-        path: artifact.path,
-        exists: artifact.exists,
-        confined: artifact.confined,
-        byteLength: artifact.byteLength,
-        digest: artifact.digest,
-        truncated: artifact.truncated,
+        ...artifact,
         editAnchors: artifact.exists ? currentSearchAnchors(artifact, actionRelevance) : [{ id: "absent", search: "" }],
       })),
-      law: "Return one exact edit transition. The displayed anchors are the admitted current-source projection; select one anchor identity and the host resolves it against the complete current artifact. The absent anchor is lawful only for a target marked exists:false. Every replacement must differ and the resulting workspace must satisfy the stated objective and acceptance test vectors.",
+      law: "Return one exact edit transition. Select a compact anchor identity from the target artifact's editAnchors; the host resolves it to the displayed exact current substring. The absent anchor is lawful only for a target marked exists:false. Every replacement must differ and the resulting workspace must satisfy the stated objective and acceptance test vectors.",
     }),
     "LEARNED OUTPUT CORRECTIONS (host-compiled from prior customer schema assays and the current contract):",
     JSON.stringify(outputContractLearning(outputSchema, projection.priorResidueKnowledge)),
@@ -403,38 +420,8 @@ function resolveContractEdit(action, processNode, writablePaths, relevance = "")
   };
 }
 
-function considerationSpent(procurements = []) {
-  const spent = new Map();
-  for (const { consideration } of procurements) {
-    for (const obligation of consideration?.obligations ?? []) {
-      if (!Number.isSafeInteger(obligation?.amount) || obligation.amount < 0 || typeof obligation.asset !== "string") continue;
-      spent.set(obligation.asset, (spent.get(obligation.asset) ?? 0) + obligation.amount);
-    }
-  }
-  return spent;
-}
-
-function remainingConsiderationPolicy(perContactPolicy, aggregateBudget, procurements = []) {
-  const spent = considerationSpent(procurements);
-  const budgetByAsset = new Map();
-  for (const alternative of aggregateBudget.acceptableAlternatives) {
-    for (const obligation of alternative.obligations) {
-      const prior = budgetByAsset.get(obligation.asset);
-      budgetByAsset.set(obligation.asset, prior === undefined ? obligation.maximumAmount : Math.max(prior, obligation.maximumAmount));
-    }
-  }
-  const acceptableAlternatives = perContactPolicy.acceptableAlternatives.map((alternative) => ({
-    ...alternative,
-    obligations: alternative.obligations.map((obligation) => ({
-      ...obligation,
-      maximumAmount: Math.min(obligation.maximumAmount, Math.max(0, (budgetByAsset.get(obligation.asset) ?? 0) - (spent.get(obligation.asset) ?? 0))),
-    })),
-  })).filter((alternative) => alternative.obligations.every((obligation) => obligation.maximumAmount > 0));
-  return acceptableAlternatives.length ? { ...perContactPolicy, acceptableAlternatives } : null;
-}
-
 function jobFor(manifest, processNode, contextPacket, considerationPolicy = manifest.considerationPolicy) {
-  const actionRelevance = [manifest.objective, ...processNode.observations.slice(-3)].join("\n");
+  const actionRelevance = [manifest.objective, ...processNode.observations].join("\n");
   const latestObservation = (() => {
     try { return JSON.parse(processNode.observations.at(-1) ?? "null"); } catch { return null; }
   })();
@@ -455,27 +442,24 @@ function jobFor(manifest, processNode, contextPacket, considerationPolicy = mani
     id: `${manifest.id}:${processNode.contacts + 1}`,
     workType: manifest.inferenceWorkType,
     requiredCapabilities: manifest.inferenceRequiredCapabilities,
-    difficulty: manifest.difficulty ?? 0.45,
-    maxTokens: manifest.maxTokens ?? 700,
+    ...(manifest.difficulty !== undefined ? { difficulty: manifest.difficulty } : {}),
     considerationPolicy,
-    routingProfile: manifest.routingProfile,
-    extendedRoutingRationale: manifest.extendedRoutingRationale,
     ...(manifest.supplierExclusions.length ? { excludeProviders: manifest.supplierExclusions } : {}),
     messages: [{ role: "system", content: SYSTEM }, { role: "user", content: processNodePrompt(processNode, contextPacket, outputSchema) }],
-    outputContract: { format: "json", ...(manifest.enforceProviderSchema ? { mode: "json_schema" } : {}), schema: outputSchema },
+    outputContract: { format: "text" },
   };
 }
 
 function normalizeTestVectors(input) {
   if (!Array.isArray(input)) return [];
-  return input.slice(0, 32).map((vector, index) => {
+  return input.map((vector, index) => {
     if (!vector || typeof vector !== "object" || Array.isArray(vector)) throw new Error(`test vector ${index + 1} must be an object`);
     const id = typeof vector.id === "string" ? vector.id.trim() : "";
-    const given = Array.isArray(vector.given) ? vector.given.filter((value) => typeof value === "string" && value.trim()).slice(0, 16) : [];
+    const given = Array.isArray(vector.given) ? vector.given.filter((value) => typeof value === "string" && value.trim()) : [];
     const when = typeof vector.when === "string" ? vector.when.trim() : "";
-    const then = Array.isArray(vector.then) ? vector.then.filter((value) => typeof value === "string" && value.trim()).slice(0, 16) : [];
-    const forbidden = Array.isArray(vector.forbidden) ? vector.forbidden.filter((value) => typeof value === "string" && value.trim()).slice(0, 16) : [];
-    if (!/^[a-z][a-z0-9-]{1,63}$/.test(id) || given.length === 0 || !when || then.length === 0) {
+    const then = Array.isArray(vector.then) ? vector.then.filter((value) => typeof value === "string" && value.trim()) : [];
+    const forbidden = Array.isArray(vector.forbidden) ? vector.forbidden.filter((value) => typeof value === "string" && value.trim()) : [];
+    if (!/^[a-z][a-z0-9-]+$/.test(id) || given.length === 0 || !when || then.length === 0) {
       throw new Error(`test vector ${index + 1} requires a lowercase id, nonempty given, when, and then fields`);
     }
     return { id, given, when, then, forbidden };
@@ -512,19 +496,34 @@ function replayInducedTrajectory(manifest, resolver, acceptanceCapsule) {
   };
 }
 
-export async function runMission(input, {
+async function runMaterializedMission(input, {
   dispatch = defaultDispatch,
   dataRoot,
   rwilAgentUrl = process.env.RWIL_RDF_AGENT,
   keepWorkspaces = false,
   onEvent = () => {},
   appendTrajectory = appendSoftwareTrajectory,
+  appendCheckpoint = null,
+  readCheckpoint = null,
   recallTrajectories = recallSoftwareTrajectories,
   resolveInducedTrajectory = resolveInducedSoftwareTrajectory,
   promotionReadout = readSoftwareTrajectoryPromotion,
+  readMemoryContext = readSoftwareMissionMemoryContext,
   signal,
 } = {}) {
+  const checkpointAppend = appendCheckpoint ?? (appendTrajectory === appendSoftwareTrajectory
+    ? appendSoftwareMissionCheckpoint
+    : async (checkpoint) => ({ id: stableIdentity("test-checkpoint", checkpoint) }));
+  const checkpointRead = readCheckpoint ?? (recallTrajectories === recallSoftwareTrajectories
+    ? readSoftwareMissionCheckpoint
+    : async () => null);
   const territory = resolve(input.territory);
+  const writablePaths = Array.isArray(input.writablePaths)
+    ? [...new Set(input.writablePaths.filter((value) => typeof value === "string" && value))]
+    : [];
+  const explicitFocusPaths = Array.isArray(input.focusPaths)
+    ? [...new Set(input.focusPaths.filter((value) => typeof value === "string" && value))]
+    : [];
   if (input.acceptanceCapsule && input.acceptanceCapsulePath) throw new Error("mission must carry an acceptance capsule by value or path, not both");
   const acceptanceCapsule = input.acceptanceCapsule
     ? validateAcceptanceCapsule(input.acceptanceCapsule, { territory })
@@ -532,22 +531,33 @@ export async function runMission(input, {
   if (acceptanceCapsule && input.acceptanceCommand && input.acceptanceCommand !== acceptanceCapsule.command) throw new Error("mission acceptance command conflicts with protected acceptance capsule");
   if (acceptanceCapsule && Array.isArray(input.testVectors) && JSON.stringify(normalizeTestVectors(input.testVectors)) !== JSON.stringify(acceptanceCapsule.testVectors)) throw new Error("mission test vectors conflict with protected acceptance capsule");
   const manifest = {
-    id: input.id || `urn:ame:software-mission-execution-service:mission:${randomUUID()}`,
+    id: input.id || stableIdentity("mission", {
+      source: input.sourceDescriptor ?? { kind: "local-territory", path: territory },
+      objective: input.objective,
+      taskClass: input.taskClass ?? null,
+      writablePaths: [...writablePaths].sort(),
+      verifyCommand: input.verifyCommand,
+      acceptanceCommand: acceptanceCapsule?.command || input.acceptanceCommand || input.verifyCommand,
+    }),
     objective: input.objective,
     taskClass: input.taskClass || null,
-    focusPaths: Array.isArray(input.focusPaths) ? [...new Set(input.focusPaths.filter((value) => typeof value === "string" && value))].slice(0, 32) : [],
-    writablePaths: Array.isArray(input.writablePaths) ? [...new Set(input.writablePaths.filter((value) => typeof value === "string" && value))].slice(0, 32) : [],
-    readablePaths: Array.isArray(input.readablePaths) ? [...new Set(input.readablePaths.filter((value) => typeof value === "string" && value))].slice(0, 32) : [],
-    workType: typeof input.workType === "string" && input.workType ? input.workType : "classification",
+    // A fabrication demand already names every authorized product locus in its
+    // writable lane.  Requiring a second, redundant focus list made empty
+    // sovereign packages fail context compilation before their must-create
+    // targets could be projected.  An explicit focus remains authoritative.
+    focusPaths: explicitFocusPaths.length > 0 ? explicitFocusPaths : writablePaths,
+    writablePaths,
+    readablePaths: Array.isArray(input.readablePaths) ? [...new Set(input.readablePaths.filter((value) => typeof value === "string" && value))] : [],
+    workType: typeof input.workType === "string" && input.workType ? input.workType : (writablePaths.length ? "software-engineering" : "inquiry"),
     requiredCapabilities: Array.isArray(input.requiredCapabilities) && input.requiredCapabilities.length
       ? [...new Set(input.requiredCapabilities.filter((value) => typeof value === "string" && value))]
-      : ["classification", input.enforceProviderSchema === true ? "json-schema-output" : "json-output"],
+      : [writablePaths.length ? "software-engineering" : "inquiry"],
     inferenceWorkType: typeof input.inferenceWorkType === "string" && input.inferenceWorkType
       ? input.inferenceWorkType
       : "inquiry",
     inferenceRequiredCapabilities: Array.isArray(input.inferenceRequiredCapabilities) && input.inferenceRequiredCapabilities.length
       ? [...new Set(input.inferenceRequiredCapabilities.filter((value) => typeof value === "string" && value))]
-      : ["inquiry", "json-output", ...(input.enforceProviderSchema === true ? ["json-schema-output"] : [])],
+      : ["inquiry"],
     territory,
     verifyCommand: input.verifyCommand,
     acceptanceCommand: acceptanceCapsule?.command || input.acceptanceCommand || input.verifyCommand,
@@ -557,146 +567,141 @@ export async function runMission(input, {
     acceptanceCapsule,
     acceptanceCapsulePath: input.acceptanceCapsulePath || null,
     difficulty: input.difficulty,
-    maxTokens: input.maxTokens,
     considerationPolicy: validateConsiderationPolicy(input.considerationPolicy ?? resolutionCreditPolicy(31)),
-    considerationBudget: validateConsiderationPolicy(input.considerationBudget ?? input.considerationPolicy ?? resolutionCreditPolicy(31)),
     enforceProviderSchema: input.enforceProviderSchema === true,
-    providerTimeoutMs: input.providerTimeoutMs == null ? null : (() => {
-      if (!Number.isSafeInteger(input.providerTimeoutMs) || input.providerTimeoutMs <= 0) {
-        throw new Error("providerTimeoutMs must be a positive safe integer when supplied");
-      }
-      return input.providerTimeoutMs;
-    })(),
-    routingProfile: input.routingProfile ?? "bounded",
-    extendedRoutingRationale: input.extendedRoutingRationale ?? null,
-    supplierExclusions: Array.isArray(input.supplierExclusions) ? [...new Set(input.supplierExclusions.filter((value) => typeof value === "string" && value))].slice(0, 32) : [],
-    requireStrongContext: input.requireStrongContext !== false,
+    supplierExclusions: Array.isArray(input.supplierExclusions) ? [...new Set(input.supplierExclusions.filter((value) => typeof value === "string" && value))] : [],
   };
-  if (!manifest.objective || !manifest.verifyCommand || !existsSync(manifest.territory)) throw new Error("mission requires objective, existing territory, and verifyCommand");
+  if (!manifest.objective || !existsSync(manifest.territory)) throw new Error("mission requires objective and an existing territory");
+  if (manifest.workType === "software-engineering" && !manifest.verifyCommand) throw new Error("software-engineering missions require verifyCommand");
   if (manifest.workType === "software-engineering" && manifest.writablePaths.length === 0) throw new Error("software-engineering missions require an explicit nonempty writable lane");
-  if (!["bounded", "extended"].includes(manifest.routingProfile)) throw new Error("mission routingProfile must be bounded or extended");
-  if (manifest.routingProfile === "extended" && (typeof manifest.extendedRoutingRationale !== "string"
-      || manifest.extendedRoutingRationale.trim().length < 8 || manifest.extendedRoutingRationale.length > 2000)) {
-    throw new Error("an extended software mission requires one bounded customer rationale");
-  }
-  if (manifest.routingProfile === "bounded" && manifest.extendedRoutingRationale !== null) throw new Error("a bounded software mission cannot carry an extended routing rationale");
   if (acceptanceCapsule) {
     if (manifest.writablePaths.length === 0) throw new Error("protected acceptance missions require an explicit nonempty writable lane");
     const conflicts = acceptanceCapsule.artifacts.filter((artifact) => manifest.writablePaths.some((path) => artifact.path === path || artifact.path.startsWith(`${path}/`) || path.startsWith(`${artifact.path}/`)));
     if (conflicts.length) throw new Error(`protected acceptance artifacts overlap the writable lane: ${conflicts.map((artifact) => artifact.path).join(", ")}`);
   }
   const startedAt = new Date().toISOString(), snapshot = territorySnapshot(manifest.territory);
-  const baselineVerification = runTestsCommand(manifest.territory, manifest.verifyCommand);
+  const baselineVerification = manifest.verifyCommand
+    ? runTestsCommand(manifest.territory, manifest.verifyCommand)
+    : { passed: true, output: "not-applicable: inquiry has no mutation acceptance command" };
   const baselineAcceptance = acceptanceCapsule
     ? executeAcceptanceCapsule(manifest.territory, acceptanceCapsule, { requireSourceEvidence: true })
-    : manifest.acceptanceCommand === manifest.verifyCommand ? baselineVerification : runTestsCommand(manifest.territory, manifest.acceptanceCommand);
-  const memoryOptions = { dataRoot, agentCardUrl: process.env.SOFTWARE_TRAJECTORY_MEMORY_AGENT_CARD_URL };
-  const memories = signal?.aborted ? [] : await recallTrajectories(manifest.objective, { ...memoryOptions, taskClass: manifest.taskClass });
+    : !manifest.acceptanceCommand || manifest.acceptanceCommand === manifest.verifyCommand ? baselineVerification : runTestsCommand(manifest.territory, manifest.acceptanceCommand);
+  const memoryOptions = {
+    dataRoot,
+    agentCardUrl: process.env.SOFTWARE_TRAJECTORY_MEMORY_AGENT_CARD_URL,
+    ...(typeof input.causalInvocation === "string" && input.causalInvocation !== ""
+      ? { invocation: input.causalInvocation }
+      : {}),
+  };
+  const sourceIdentity = stableIdentity("source", input.sourceDescriptor ?? { kind: "local-territory", path: manifest.territory });
+  const useProjectedMemoryContext = readMemoryContext === readSoftwareMissionMemoryContext
+    && checkpointRead === readSoftwareMissionCheckpoint
+    && recallTrajectories === recallSoftwareTrajectories
+    && resolveInducedTrajectory === resolveInducedSoftwareTrajectory
+    && promotionReadout === readSoftwareTrajectoryPromotion;
+  const memoryContext = signal?.aborted || !useProjectedMemoryContext ? null
+    : await readMemoryContext(manifest.objective, manifest.taskClass, manifest.id, sourceIdentity, memoryOptions);
+  const priorCheckpoint = signal?.aborted ? null : memoryContext
+    ? memoryContext.checkpoint
+    : await checkpointRead(manifest.id, sourceIdentity, memoryOptions);
+  const memories = signal?.aborted ? [] : memoryContext?.memories
+    ?? await recallTrajectories(manifest.objective, { ...memoryOptions, taskClass: manifest.taskClass });
   const contextPacket = buildCodingContextPacket({ manifest, snapshot, baselineVerification, baselineAcceptance, memories, actionSchema: ACTION_SCHEMA });
-  if (manifest.workType === "software-engineering" && manifest.requireStrongContext && Object.values(contextPacket.packetQuality).some((value) => value !== true)) {
-    const deficient = Object.entries(contextPacket.packetQuality).filter(([, value]) => value !== true).map(([key]) => key);
-    throw new Error(`software-engineering context packet is deficient: ${deficient.join(", ")}`);
-  }
-  if (input.acceptAlreadySatisfied !== false && baselineVerification.passed && baselineAcceptance.passed) {
-    const finishedAt = new Date().toISOString();
-    const outcome = {
-      verified: true,
-      promotable: false,
-      candidateVerified: false,
-      integrated: true,
-      inductionRequired: false,
-      classification: "already-satisfied",
-      changedPaths: [],
-      selectedProcessNodeId: null,
-      selectedActions: [],
-      trajectoryFingerprint: null,
-      trajectoryRecipeFingerprint: null,
-      inducedResolver: null,
-      summary: "the admitted territory already satisfies customer verification and acceptance",
-      proposal: null,
-      integration: { integrated: true, classification: "already-satisfied" },
-    };
-    const record = {
-      type: "SoftwareMissionTrajectory",
-      id: manifest.id,
-      objective: manifest.objective,
-      taskClass: manifest.taskClass,
-      startedAt,
-      finishedAt,
-      territory: { path: manifest.territory, filesObserved: snapshot.files.length, baselineVerificationPassed: true },
-      contextPacket: {
-        digest: contextPacket.digest,
-        evidenceArtifacts: contextPacket.evidenceArtifacts.map((artifact) => ({ path: artifact.path, role: artifact.role, digest: artifact.digest, truncated: artifact.truncated })),
-        omittedArtifacts: contextPacket.omittedArtifacts,
-        quality: contextPacket.packetQuality,
-        acceptanceAuthority: contextPacket.acceptanceAuthority,
-        resourceAccount: contextPacket.resourceAccount,
-      },
-      outcome,
-      metrics: {
-        processNodes: 0,
-        inferenceContacts: 0,
-        inferenceAttempts: 0,
-        usefulCompletions: 0,
-        verifiedCandidates: 0,
-        directInteractiveModelCalls: 0,
-        inducedResolverReplays: 0,
-        procurementSelections: 0,
-        expectedConsideration: [],
-      },
-      processNode: null,
-    };
-    const trajectoryRecord = await appendTrajectory(record, memoryOptions);
-    onEvent({ type: "mission-settled", missionId: manifest.id, outcome, graphPath: trajectoryRecord.graphPath, semanticId: trajectoryRecord.documentNi });
-    return {
-      ...record,
-      graphPath: trajectoryRecord.graphPath,
-      objectPath: trajectoryRecord.objectPath,
-      semanticId: trajectoryRecord.documentNi,
-      promotion: await promotionReadout(manifest.taskClass, memoryOptions),
-    };
-  }
-  const induced = signal?.aborted || input.useInducedResolver === false || contextPacket.acceptanceAuthority.protected !== true ? null : await resolveInducedTrajectory(manifest.taskClass, { ...memoryOptions, threshold: Number.isInteger(input.resolverPromotionThreshold) ? Math.max(2, input.resolverPromotionThreshold) : 5 });
+  const contextDeficiencies = Object.entries(contextPacket.packetQuality)
+    .filter(([, value]) => value !== true)
+    .map(([key]) => key);
+  const induced = signal?.aborted || input.useInducedResolver === false || contextPacket.acceptanceAuthority.protected !== true
+    ? null
+    : memoryContext?.resolver ?? await resolveInducedTrajectory(manifest.taskClass, memoryOptions);
   const replay = induced?.eligible ? replayInducedTrajectory(manifest, induced, acceptanceCapsule) : null;
   if (replay && replay.status !== "verified") {
     onEvent({ type: "induced-resolver-missed", missionId: manifest.id, resolverId: induced.resolverId });
     rmSync(replay.parent, { recursive: true, force: true });
   }
-  onEvent({ type: "mission-started", missionId: manifest.id, startedAt, processNodes: replay?.status === "verified" ? 0 : 1, inducedResolver: replay?.status === "verified" ? induced.resolverId : null, filesObserved: snapshot.files.length, baselineVerificationPassed: baselineVerification.passed, contextPacket: { digest: contextPacket.digest, evidenceArtifacts: contextPacket.evidenceArtifacts.length, quality: contextPacket.packetQuality } });
+  onEvent({ type: "mission-started", missionId: manifest.id, startedAt, processNodes: replay?.status === "verified" ? 0 : 1, inducedResolver: replay?.status === "verified" ? induced.resolverId : null, resumedCheckpoint: priorCheckpoint?.id ?? null, filesObserved: snapshot.files.length, baselineVerificationPassed: baselineVerification.passed, contextPacket: { digest: contextPacket.digest, evidenceArtifacts: contextPacket.evidenceArtifacts.length, quality: contextPacket.packetQuality } });
   const processNode = replay?.status === "verified" ? replay : (() => {
     const isolated = copyTerritory(manifest.territory);
     if (acceptanceCapsule) materializeAcceptanceCapsule(isolated.workspace, acceptanceCapsule);
+    const tools = createAgentTools({ root: isolated.workspace, verifyCommand: manifest.verifyCommand, acceptanceCommand: manifest.acceptanceCommand, commands: manifest.commands, writablePaths: manifest.writablePaths, readablePaths: manifest.readablePaths });
+    if (priorCheckpoint) tools.restoreChanges(priorCheckpoint.changes);
     return {
       id: "process-node",
       ...isolated,
-      tools: createAgentTools({ root: isolated.workspace, verifyCommand: manifest.verifyCommand, acceptanceCommand: manifest.acceptanceCommand, commands: manifest.commands, writablePaths: manifest.writablePaths, readablePaths: manifest.readablePaths }),
-      observations: [], actions: [], providers: [], procurements: [], attempts: [], transitionFingerprints: new Set(),
-      writablePaths: manifest.writablePaths, contacts: 0, status: signal?.aborted ? "stopped" : "ready", refusal: signal?.aborted ? { type: "aborted" } : null, completions: 0,
+      tools,
+      observations: priorCheckpoint?.observations ?? [], actions: priorCheckpoint?.actions ?? [], providers: priorCheckpoint?.providers ?? [], procurements: priorCheckpoint?.procurements ?? [], attempts: priorCheckpoint?.attempts ?? [], transitionFingerprints: new Set(priorCheckpoint?.transitionFingerprints ?? []),
+      writablePaths: manifest.writablePaths, contacts: priorCheckpoint?.contacts ?? 0, checkpointOrdinal: priorCheckpoint?.ordinal ?? "0", checkpointId: priorCheckpoint?.id ?? null, status: signal?.aborted ? "stopped" : ["verified", "answered"].includes(priorCheckpoint?.status) ? priorCheckpoint.status : "ready", answer: priorCheckpoint?.answer ?? null, refusal: signal?.aborted ? { type: "aborted" } : null, completions: priorCheckpoint?.completions ?? 0,
     };
   })();
-  let inferenceContacts = 0, attempts = 0;
+  if (processNode && !processNode.deterministicResolver && contextDeficiencies.length > 0
+      && !processNode.observations.some((observation) => String(observation).includes('"type":"ContextQualityObservation"'))) {
+    processNode.observations.push(JSON.stringify({
+      type: "ContextQualityObservation",
+      disposition: "repairable",
+      deficiencies: contextDeficiencies,
+      rule: "Missing context evidence is analysis work for the process node; customer verification remains the induction boundary.",
+    }));
+  }
+  let inferenceContacts = processNode?.contacts ?? 0, attempts = processNode?.attempts?.length ?? 0;
+  const seatCheckpoint = async (stage) => {
+    if (!processNode || processNode.deterministicResolver) return null;
+    const ordinal = (BigInt(processNode.checkpointOrdinal) + 1n).toString();
+    const checkpoint = {
+      type: "SoftwareMissionCheckpoint",
+      missionId: manifest.id,
+      sourceIdentity,
+      recordedAt: new Date().toISOString(),
+      ordinal,
+      parentCheckpoint: processNode.checkpointId,
+      stage,
+      status: processNode.status,
+      changes: checkpointChanges(processNode.tools),
+      observations: processNode.observations,
+      actions: processNode.actions,
+      providers: processNode.providers,
+      procurements: processNode.procurements,
+      attempts: processNode.attempts,
+      transitionFingerprints: [...processNode.transitionFingerprints],
+      contacts: processNode.contacts,
+      completions: processNode.completions,
+      answer: processNode.answer ?? null,
+    };
+    checkpoint.id = stableIdentity("checkpoint", {
+      missionId: checkpoint.missionId,
+      sourceIdentity: checkpoint.sourceIdentity,
+      ordinal: checkpoint.ordinal,
+      parentCheckpoint: checkpoint.parentCheckpoint,
+      stage: checkpoint.stage,
+      changes: checkpoint.changes,
+      actions: checkpoint.actions,
+      transitionFingerprints: checkpoint.transitionFingerprints,
+    });
+    const seated = await checkpointAppend(checkpoint, memoryOptions);
+    processNode.checkpointOrdinal = ordinal;
+    processNode.checkpointId = checkpoint.id;
+    onEvent({ type: "mission-checkpoint-seated", missionId: manifest.id, stage, semanticId: seated.documentNi ?? seated.id ?? null });
+    return seated;
+  };
   try {
-    while (processNode && !processNode.deterministicResolver && processNode.status === "ready") {
+    contactLot: while (processNode && !processNode.deterministicResolver && processNode.status === "ready") {
       if (signal?.aborted) {
         processNode.status = "stopped";
         processNode.refusal = { type: "aborted" };
-        break;
+        await seatCheckpoint("dispatch-aborted");
+        break contactLot;
       }
-      const remainingConsideration = remainingConsiderationPolicy(manifest.considerationPolicy, manifest.considerationBudget, processNode.procurements);
-      if (!remainingConsideration) {
-        processNode.status = "refused";
-        processNode.refusal = { type: "consideration-budget-exhausted", spent: Object.fromEntries(considerationSpent(processNode.procurements)) };
-        processNode.observations.push(JSON.stringify({ terminal: true, ...processNode.refusal }));
-        break;
-      }
-      const job = jobFor(manifest, processNode, contextPacket, remainingConsideration);
+      // Current consideration policies name acceptable denominations and
+      // settlement capabilities. Provider-authored offers carry the exact
+      // fractional price; maximumAmount and integer aggregate grants are
+      // retired. Each additional contact therefore returns to the market and
+      // bears its own quoted pressure instead of consuming a fake local cap.
+      const job = jobFor(manifest, processNode, contextPacket, manifest.considerationPolicy);
       processNode.contacts += 1;
       inferenceContacts += 1;
       onEvent({ type: "process-node-inference-started", missionId: manifest.id, processNodeId: processNode.id, contact: processNode.contacts, jobId: job.id });
       let records = [];
       let dispatchAbort = null;
       try {
-        records = await dispatch([job], { concurrency: 1, timeoutMs: manifest.providerTimeoutMs, signal });
+        records = await dispatch([job], { ...(signal ? { signal } : {}) });
       } catch (error) {
         if (signal?.aborted || error?.name === "AbortError") {
           dispatchAbort = error;
@@ -735,59 +740,85 @@ export async function runMission(input, {
         }));
         processNode.status = "stopped";
         processNode.refusal = { type: "aborted" };
-        break;
+        break contactLot;
       }
       const parsedAction = parseAction(record);
       const action = resolveContractEdit(
         parsedAction,
         processNode,
         manifest.writablePaths,
-        [manifest.objective, ...processNode.observations.slice(-3)].join("\n"),
+        [manifest.objective, ...processNode.observations].join("\n"),
       );
       if (!action || record?.refusal) {
         processNode.observations.push(`Inference refusal or invalid action: ${record?.refusal?.type || "no result"}${record?.refusal?.reason ? `: ${record.refusal.reason}` : ""}`);
-        processNode.status = "refused";
-        processNode.refusal = record?.refusal ?? { type: "invalid-action-candidate" };
+        const refusal = record?.refusal ?? { type: "invalid-action-candidate" };
+        const refusalFingerprint = createHash("sha256").update(JSON.stringify({ type: refusal.type ?? null, reason: refusal.reason ?? null, provider: record?.provider ?? null, schemaAssay: procurement.schemaAssay ?? null })).digest("hex");
+        if (processNode.transitionFingerprints.has(refusalFingerprint)) {
+          processNode.status = "stopped";
+          processNode.fixedPoint = { type: "repeated-market-refusal", fingerprint: refusalFingerprint, refusal };
+        } else {
+          processNode.transitionFingerprints.add(refusalFingerprint);
+          processNode.refusal = refusal;
+        }
         onEvent({ type: "process-node-contact-refused", missionId: manifest.id, processNodeId: processNode.id, refusal: processNode.refusal });
-        break;
+        await seatCheckpoint("market-refusal");
+        break contactLot;
       }
       const currentEditError = validateCurrentAction(action, processNode, manifest.writablePaths);
       if (currentEditError) {
         processNode.actions.push(action);
         processNode.providers.push(record?.provider || record?.attempts?.find((attempt) => attempt.outcome === "completion")?.provider || record?.endpoint || null);
-        processNode.observations.push(JSON.stringify({ terminal: true, error: currentEditError }));
-        processNode.status = "refused";
+        processNode.observations.push(JSON.stringify({ refused: true, error: currentEditError, nextAct: "return-to-capability-market" }));
         processNode.refusal = { type: "invalid-action-candidate", reason: currentEditError };
+        const invalidFingerprint = transitionFingerprint(processNode, action);
+        if (processNode.transitionFingerprints.has(invalidFingerprint)) {
+          processNode.status = "stopped";
+          processNode.fixedPoint = { type: "repeated-invalid-transition", fingerprint: invalidFingerprint, refusal: processNode.refusal };
+        } else processNode.transitionFingerprints.add(invalidFingerprint);
         onEvent({ type: "process-node-action-refused", missionId: manifest.id, processNodeId: processNode.id, action: action.action, refusal: processNode.refusal });
-        break;
+        await seatCheckpoint("action-refusal");
+        break contactLot;
       }
       const fingerprint = transitionFingerprint(processNode, action);
       if (processNode.transitionFingerprints.has(fingerprint)) {
         processNode.status = "stopped";
         processNode.fixedPoint = { type: "repeated-deterministic-transition", fingerprint };
         processNode.observations.push(JSON.stringify({ stopped: true, ...processNode.fixedPoint }));
-        break;
+        await seatCheckpoint("fixed-point");
+        break contactLot;
       }
       processNode.transitionFingerprints.add(fingerprint);
       processNode.completions += 1;
       processNode.actions.push(action);
       processNode.providers.push(record?.provider || record?.attempts?.find((attempt) => attempt.outcome === "completion")?.provider || record?.endpoint || null);
       let observation;
-      try { observation = processNode.tools.execute(action); } catch (error) { observation = JSON.stringify({ terminal: true, error: error.message }); }
+      if (manifest.workType === "inquiry" && action.action === "finish") {
+        const answer = typeof action.args?.summary === "string" ? action.args.summary.trim() : "";
+        observation = JSON.stringify(answer
+          ? { answered: true, artifact: stableIdentity("inquiry-answer", { mission: manifest.id, answer }) }
+          : { terminal: true, error: "inquiry finish requires a nonempty work product" });
+        if (answer) {
+          processNode.answer = answer;
+          processNode.status = "answered";
+        }
+      } else {
+        try { observation = processNode.tools.execute(action); } catch (error) { observation = JSON.stringify({ terminal: true, error: error.message }); }
+      }
       processNode.observations.push(observation);
       onEvent({ type: "process-node-action-settled", missionId: manifest.id, processNodeId: processNode.id, contact: processNode.contacts, action: action.action, endpoint: record?.endpoint || null });
+      await seatCheckpoint("action-settled");
       if (signal?.aborted) {
         processNode.status = "stopped";
         processNode.refusal = { type: "aborted" };
-        break;
+        break contactLot;
       }
       const verdict = (() => { try { return JSON.parse(observation); } catch { return null; } })();
       if (verdict?.error && verdict?.terminal === true) {
-        processNode.status = "refused";
         processNode.refusal = { type: "invalid-action-candidate", reason: verdict.error };
         onEvent({ type: "process-node-action-refused", missionId: manifest.id, processNodeId: processNode.id, action: action.action, refusal: processNode.refusal });
       } else if (processNode.tools.changed.size > 0 && verdict?.verification?.passed === true && verdict?.acceptance?.passed === true) {
         processNode.status = "verified";
+        await seatCheckpoint("candidate-verified");
       }
     }
     const selected = processNode?.status === "verified" ? {
@@ -799,6 +830,9 @@ export async function runMission(input, {
       providers: processNode.providers,
       deterministicResolver: processNode.deterministicResolver ?? null,
     } : null;
+    const inquiryAnswer = manifest.workType === "inquiry" && processNode?.status === "answered"
+      ? processNode.answer
+      : null;
     const candidateAccepted = Boolean(selected);
     const proposal = selected ? {
       type: "SoftwareMissionChangeProposal",
@@ -816,15 +850,19 @@ export async function runMission(input, {
       proposalOnly: true,
       customerMutation: false,
     } : null;
+    const continuationRequired = !selected && !inquiryAnswer && processNode?.status === "ready";
     const integration = {
       integrated: false,
-      classification: selected ? "awaiting-receiver-induction" : "unresolved",
+      classification: selected ? "awaiting-receiver-induction" : inquiryAnswer ? "answered" : continuationRequired ? "continuation-required" : "unresolved",
     };
     const finishedAt = new Date().toISOString();
     const outcome = {
       verified: candidateAccepted,
       promotable: false,
       candidateVerified: Boolean(selected),
+      answered: Boolean(inquiryAnswer),
+      inquiryResult: inquiryAnswer,
+      continuationRequired,
       integrated: integration.integrated,
       inductionRequired: Boolean(selected),
       classification: integration.classification,
@@ -836,6 +874,8 @@ export async function runMission(input, {
       inducedResolver: selected?.deterministicResolver ?? null,
       summary: selected
         ? "the process node produced a verification- and customer-acceptance-passing candidate"
+        : inquiryAnswer
+          ? "the process node inspected the admitted source and produced the requested work product"
         : "the process node did not produce a verification-passing candidate",
       proposal,
       integration,
@@ -847,9 +887,11 @@ export async function runMission(input, {
       taskClass: manifest.taskClass,
       startedAt,
       finishedAt,
-      territory: { path: manifest.territory, filesObserved: snapshot.files.length, baselineVerificationPassed: baselineVerification.passed },
+      territory: { source: input.sourceDescriptor ?? { kind: "local-territory", path: manifest.territory }, filesObserved: snapshot.files.length, baselineVerificationPassed: baselineVerification.passed },
       contextPacket: {
         digest: contextPacket.digest,
+        lane: contextPacket.lane,
+        targetArtifacts: contextPacket.targetArtifacts,
         evidenceArtifacts: contextPacket.evidenceArtifacts.map((artifact) => ({ path: artifact.path, role: artifact.role, digest: artifact.digest, truncated: artifact.truncated })),
         omittedArtifacts: contextPacket.omittedArtifacts,
         quality: contextPacket.packetQuality,
@@ -868,7 +910,10 @@ export async function runMission(input, {
         procurementSelections: processNode?.procurements.length ?? 0,
         expectedConsideration: (processNode?.procurements ?? [])
           .flatMap(({ provider, consideration }) => (consideration?.obligations ?? [])
-            .filter((obligation) => Number.isSafeInteger(obligation.amount) && typeof obligation.unit === "string")
+            .filter((obligation) => obligation.amount && typeof obligation.amount === "object"
+              && typeof obligation.amount.numerator === "string"
+              && typeof obligation.amount.denominator === "string"
+              && typeof obligation.unit === "string")
             .map((obligation) => ({ provider, amount: obligation.amount, unit: obligation.unit, asset: obligation.asset ?? null, kind: obligation.kind ?? null }))),
       },
       processNode: processNode ? { id: processNode.id, status: processNode.status, refusal: processNode.refusal ?? null, actions: processNode.actions, providers: processNode.providers, procurements: processNode.procurements, attempts: processNode.attempts ?? [], observations: processNode.observations, fixedPoint: processNode.fixedPoint ?? null, deterministicResolver: processNode.deterministicResolver ?? null } : null,
@@ -880,9 +925,21 @@ export async function runMission(input, {
       graphPath: trajectoryRecord.graphPath,
       objectPath: trajectoryRecord.objectPath,
       semanticId: trajectoryRecord.documentNi,
-      promotion: await promotionReadout(manifest.taskClass, memoryOptions),
+      // The context projection is the causal promotion view at mission start.
+      // A later activation will observe the just-appended trajectory; do not
+      // rehydrate global memory merely to decorate this transition's receipt.
+      promotion: memoryContext?.promotion ?? await promotionReadout(manifest.taskClass, memoryOptions),
     };
   } finally {
     if (!keepWorkspaces && processNode) rmSync(processNode.parent, { recursive: true, force: true });
+  }
+}
+
+export async function runMission(input, options = {}) {
+  const materialized = await materializeMissionSource(input, options);
+  try {
+    return await runMaterializedMission({ ...input, territory: materialized.territory, sourceDescriptor: materialized.descriptor }, options);
+  } finally {
+    if (materialized.cleanup) rmSync(materialized.cleanup, { recursive: true, force: true });
   }
 }

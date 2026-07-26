@@ -19,22 +19,11 @@ async function appendRouteObservation(record, { dataRoot, rwilAgentUrl, settleme
 export async function runMissionPipeline(mission, {
   runMission = defaultRunMission,
   signal,
-  dataRoot = DEFAULT_MISSION_EXECUTION_DATA_ROOT,
+  dataRoot = process.env.SOFTWARE_MISSION_EXECUTION_DATA_ROOT ?? DEFAULT_MISSION_EXECUTION_DATA_ROOT,
   rwilAgentUrl = process.env.RWIL_RDF_AGENT,
   settlementCaip2 = process.env.SETTLEMENT_CAIP2,
 } = {}) {
-  if (!["bounded", "extended"].includes(mission.routingProfile ?? "bounded")) throw new Error("mission routingProfile must be bounded or extended");
-  if (mission.routingProfile === "extended" && (typeof mission.extendedRoutingRationale !== "string"
-      || mission.extendedRoutingRationale.trim().length < 8 || mission.extendedRoutingRationale.length > 2000)) {
-    throw new Error("an extended software mission requires one bounded customer rationale");
-  }
-  if ((mission.routingProfile ?? "bounded") === "bounded" && mission.extendedRoutingRationale != null) {
-    throw new Error("a bounded software mission cannot carry an extended routing rationale");
-  }
-  if (mission.maxTokens != null && (!Number.isSafeInteger(mission.maxTokens)
-      || mission.maxTokens <= 0)) {
-    throw new Error("mission maxTokens must be a positive safe integer when supplied");
-  }
+  if (mission.maxTokens != null) throw new Error("mission maxTokens is retired; provider capacity and market consideration determine admissible output");
   const current = await runMission(mission, {
     signal,
     dataRoot,
@@ -50,13 +39,19 @@ export async function runMissionPipeline(mission, {
     taskClass: mission.taskClass || null,
     finishedAt,
     finalVerified: current.outcome?.verified === true,
+    finalAnswered: current.outcome?.answered === true,
     phaseCount: 1,
     inferenceAttempts: current.metrics?.inferenceAttempts || 0,
     usefulCompletions: current.metrics?.usefulCompletions || 0,
     directInteractiveModelCalls: current.metrics?.directInteractiveModelCalls || 0,
     nextActCarrier: "software-trajectory-memory-service",
-    sameSessionRetry: false,
-    modelEscalationAllowed: false,
+    continuation: current.processNode?.fixedPoint
+      ? { state: "obstructed-fixed-point", obstruction: current.processNode.fixedPoint }
+      : current.outcome?.verified === true
+        ? { state: "awaiting-customer-induction" }
+        : current.outcome?.answered === true
+          ? { state: "answered" }
+        : { state: "durable-demand-open", nextAct: "return-to-capability-market" },
   };
   const routeRecord = await appendRouteObservation(observation, {
     dataRoot,

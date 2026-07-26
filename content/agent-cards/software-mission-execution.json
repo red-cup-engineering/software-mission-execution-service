@@ -1,6 +1,6 @@
 {
   "name": "Software Mission Execution Service",
-  "description": "Executes one bounded canonical RMN software mission through contracted inference, acceptance, review, and trajectory-memory faces.",
+  "description": "Executes a durable canonical RMN software mission over immutable source through priced inference, isolated tools, protected acceptance, and trajectory-memory cells.",
   "supportedInterfaces": [
     {
       "url": "${BASE_URL}/a2a/jsonrpc",
@@ -31,10 +31,6 @@
         "params": {
           "profile": "org.emsenn.rmn.sovereign-circuit-interface.v1",
           "account": "eip155:5615610:0x02afc351a638176a2213ee9af01c34222700a6e9",
-          "cell": "ni:///sha-256;WrnrGi5ks0HreesQV0V7Z0i-02op4qrGChyeSszqSlg",
-          "sku": "ni:///sha-256;qNrsU8uA7WvzC0VPHidC9FhLjyaLp1mgxsEyKjKZOZo",
-          "capability": "ni:///sha-256;qTArgykFxDwW-NnKtb-NegnwJBZ36VocGBcd0V-sCoc",
-          "controller": "did:pkh:eip155:5615610:0x02afc351a638176a2213ee9af01c34222700a6e9",
           "authority": "ni:///sha-256;3v3AENHnxTccPfzdkOn_-fxMjaAlsCSCwz8j8OGYr-Y",
           "custody": "ni:///sha-256;6ZMfTFFK6ZHRTfEZs7585kN3Kq75pToLXuJx-DOaTxk",
           "territory": "ni:///sha-256;RJ6_SM0Y-MiuTLH86nWnfFh_ME8jAdel6mOVCv9bahU",
@@ -147,7 +143,7 @@
     {
       "id": "execute-software-mission",
       "name": "Execute software mission",
-      "description": "Execute one bounded mission and return proposal or refusal evidence.",
+      "description": "Advance one durable mission until verified proposal, cancellation, or a witnessed fixed-point obstruction.",
       "tags": [
         "software",
         "mission",

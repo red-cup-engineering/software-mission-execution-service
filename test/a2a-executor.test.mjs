@@ -24,6 +24,19 @@ test("the A2A executor carries one canonical RMN mission without a queue", async
   assert.equal(response.result.outcome.verified, true);
 });
 
+test("the A2A executor binds a mutable-state observation to its causal activation", async () => {
+  const invocation = "ni:///sha-256;BBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBB";
+  const canonical = exact({ ...request, invocation });
+  const source = Message.toJSON({ messageId: "00000000-0000-4000-8000-000000000003", contextId: "", taskId: "", role: Role.ROLE_USER, parts: [rmnPart(operationBytes(canonical))], metadata: {}, extensions: [], referenceTaskIds: [] });
+  let observed;
+  await executeA2aMessage(source, { runMissionPipeline: async (input) => {
+    observed = input;
+    return { type: "SoftwareMissionTrajectory", id: input.id, outcome: { verified: true } };
+  } });
+  assert.equal(observed.causalInvocation, invocation);
+  assert.equal(observed.id, mission.id);
+});
+
 test("the client addresses exactly one mission operation to the execution die", async () => {
   const send = async ({ message }) => {
     const source = Message.fromJSON(message), input = operationFromBytes(extractRmnPart(source.parts).bytes);

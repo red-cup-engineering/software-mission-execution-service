@@ -50,27 +50,22 @@ test("one A2A request performs one knowledge pulse and leaves failure in enterpr
   assert.equal(settled.phases[0].kind, "enterprise-knowledge-pulse");
   assert.equal(settled.route.routePolicy, "enterprise-memory-pulse-only");
   assert.equal(settled.route.nextActCarrier, "software-trajectory-memory-service");
-  assert.equal(settled.route.sameSessionRetry, false);
-  assert.equal(settled.route.modelEscalationAllowed, false);
+  assert.deepEqual(settled.route.continuation, { state: "durable-demand-open", nextAct: "return-to-capability-market" });
 });
 
-test("extended routing requires an explicit customer rationale before any provider act", async () => {
+test("legacy synchronous routing profiles do not control market continuation", async () => {
   const dataRoot = mkdtempSync(join(tmpdir(), "union-route-data-"));
-  await assert.rejects(runMissionPipeline({
+  const settled = await runMissionPipeline({
     id: "urn:test:extended-without-rationale", objective: "multi-file assay", territory: dataRoot,
     verifyCommand: "true", routingProfile: "extended",
-  }, {
-    dataRoot,
-    rwilAgentUrl: rwil.agentCardUrl,
-    settlementCaip2,
-    runMission: async () => result(true, "must not run"),
-  }), /customer rationale/u);
+  }, { dataRoot, rwilAgentUrl: rwil.agentCardUrl, settlementCaip2, runMission: async () => result(true, "market settled") });
+  assert.deepEqual(settled.route.continuation, { state: "awaiting-customer-induction" });
 });
 
-test("passes a positive customer token demand to provider-market selection without a universal ceiling", async () => {
+test("rejects customer token ceilings so provider offers determine capacity", async () => {
   const dataRoot = mkdtempSync(join(tmpdir(), "union-route-data-"));
   const calls = [];
-  const settled = await runMissionPipeline({
+  await assert.rejects(runMissionPipeline({
     id: "urn:test:provider-priced-token-demand", objective: "provider-priced token demand", territory: dataRoot,
     verifyCommand: "true", maxTokens: 8193,
   }, {
@@ -78,10 +73,8 @@ test("passes a positive customer token demand to provider-market selection witho
     rwilAgentUrl: rwil.agentCardUrl,
     settlementCaip2,
     runMission: async (mission) => { calls.push(mission); return result(true, "provider admitted the requested lot"); },
-  });
-  assert.equal(calls.length, 1);
-  assert.equal(calls[0].maxTokens, 8193);
-  assert.equal(settled.outcome.verified, true);
+  }), /maxTokens is retired/u);
+  assert.equal(calls.length, 0);
 });
 
 test("refuses a non-positive token quantity before provider-market selection", async () => {
@@ -95,6 +88,6 @@ test("refuses a non-positive token quantity before provider-market selection", a
     rwilAgentUrl: rwil.agentCardUrl,
     settlementCaip2,
     runMission: async () => { calls += 1; return result(true, "must not run"); },
-  }), /maxTokens must be a positive safe integer/u);
+  }), /maxTokens is retired/u);
   assert.equal(calls, 0);
 });

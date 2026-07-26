@@ -25,7 +25,10 @@ export async function executeOperation(request, options = {}) {
   if (!exact(request) || request.provider !== ACTOR) throw new Error("exact provider-addressed canonical RMN operation is required");
   if (request.type === "SoftwareMissionExecutionRequest") {
     if (!request.mission || typeof request.mission !== "object") throw new Error("software mission request requires one mission");
-    const result = await (options.runMissionPipeline ?? runMissionPipeline)(request.mission, options.execution ?? {});
+    const mission = typeof request.invocation === "string" && request.invocation !== ""
+      ? { ...request.mission, causalInvocation: request.invocation }
+      : request.mission;
+    const result = await (options.runMissionPipeline ?? runMissionPipeline)(mission, options.execution ?? {});
     return record({ type: "SoftwareMissionExecutionResult", provider: ACTOR, request: request.id, mission: request.mission.id, result });
   }
   throw new Error(`unsupported software mission operation: ${String(request.type)}`);

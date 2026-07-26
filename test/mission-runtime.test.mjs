@@ -91,7 +91,6 @@ test("a protected capsule may cross the exact A2A mission boundary by value", as
     verifyCommand: "node --test calc.test.mjs", acceptanceCapsule,
     focusPaths: ["calc.mjs"], writablePaths: ["calc.mjs"], readablePaths: [], workType: "software-engineering",
     requiredCapabilities: ["software-engineering", "json-schema-output"],
-    enforceProviderSchema: true,
   }, { dispatch, dataRoot });
   assert.equal(result.outcome.verified, true); assert.equal(result.outcome.proposal.proposalOnly, true); assert.match(readFileSync(join(territory, "calc.mjs"), "utf8"), /a - b/u);
 });
@@ -179,7 +178,8 @@ test("protected capsule artifact cannot be edited by the implementation supplier
 test("one process-node contact verifies and records a receiver-bound proposal", async () => {
   const territory = fixture(), dataRoot = join(territory, "free-compute-data");
   let contacts = 0;
-  const dispatch = async (jobs) => {
+  const dispatch = async (jobs, options) => {
+    assert.equal(Object.hasOwn(options, "concurrency"), false);
     contacts += 1;
     return jobs.map((job) => ({
       ...response(job, {
@@ -192,7 +192,7 @@ test("one process-node contact verifies and records a receiver-bound proposal", 
       model: "qwen3:1.7b",
       receipt: "ni:///sha-256;generic-record-receipt",
       providerNativeReceipt: { type: "ProviderInferenceReceipt", inputTokens: 31, outputTokens: 7 },
-      cost: { obligations: [{ amount: 12, unit: "relative-resolution-milliquanta-v1", asset: "urn:union:credit:relative-resolution-milliquanta-v1", kind: "credit" }] },
+      cost: { obligations: [{ amount: { numerator: "12", denominator: "1" }, unit: "relative-resolution-milliquanta-v1", asset: "urn:union:credit:relative-resolution-milliquanta-v1", kind: "credit" }] },
       procurement: {
         market: "eip155:31337:0x1111111111111111111111111111111111111111",
         request: "ni:///sha-256;request",
@@ -229,7 +229,7 @@ test("one process-node contact verifies and records a receiver-bound proposal", 
   assert.equal(result.metrics.usefulCompletions, 1);
   assert.deepEqual(result.metrics.expectedConsideration, [{
     provider: "urn:provider:local-npu",
-    amount: 12,
+    amount: { numerator: "12", denominator: "1" },
     unit: "relative-resolution-milliquanta-v1",
     asset: "urn:union:credit:relative-resolution-milliquanta-v1",
     kind: "credit",
@@ -273,7 +273,8 @@ test("a schema-capable mission mechanically requests the action schema", async (
   assert.deepEqual(observedContract.schema, softwareEditActionSchema(["calc.mjs"], [{
     path: "calc.mjs", exists: true, truncated: false, text: readFileSync(join(territory, "calc.mjs"), "utf8"),
   }], "Repair the add function through a schema-capable supplier."));
-  const editBlock = observedContract.schema.properties.args.properties.blocks;
+  const editAlternative = observedContract.schema.oneOf.find((alternative) => alternative.properties.action.const === "edit");
+  const editBlock = editAlternative.properties.args.oneOf[0].properties.blocks;
   assert.deepEqual(observedContract.schema.required, ["action", "args"]);
   assert.equal(observedContract.schema.properties.reason, undefined);
   assert.ok(editBlock.properties.anchor.enum.every((anchor) => /^a-[0-9a-f]{16}$/u.test(anchor)));
@@ -332,15 +333,18 @@ test("green verification and red acceptance contract the next edit to acceptance
     },
   });
   assert.equal(result.outcome.verified, true);
-  assert.equal(jobs[1].outputContract.schema.properties.args.properties.path.const, "witness.txt");
+  const editAlternative = jobs[1].outputContract.schema.oneOf.find((alternative) => alternative.properties.action.const === "edit");
+  assert.deepEqual(editAlternative.properties.args.oneOf.map((alternative) => alternative.properties.path.const), ["witness.txt"]);
 });
 
 test("an absent declared writable target is offered only as an exact create action", () => {
   const schema = softwareEditActionSchema(["test/deployment-serialization.test.mjs"], [{
     path: "test/deployment-serialization.test.mjs", exists: false, confined: true, byteLength: 0, text: "", truncated: false,
   }]);
-  assert.equal(schema.properties.action.const, "create");
-  const args = schema.properties.args;
+  assert.deepEqual(schema.properties.action.enum, ["create"]);
+  assert.equal(schema.oneOf.length, 1);
+  assert.equal(schema.oneOf[0].properties.action.const, "create");
+  const args = schema.oneOf[0].properties.args.oneOf[0];
   assert.equal(args.properties.path.const, "test/deployment-serialization.test.mjs");
   assert.equal(args.properties.content.type, "string");
   assert.equal(args.properties.blocks, undefined);
@@ -408,38 +412,46 @@ test("a repeated deterministic transition stops the process node without an arbi
   assert.equal(result.metrics.inferenceContacts, 2);
 });
 
-test("an aggregate consideration grant stops later contacts without a wall-clock deadline", async () => {
+test("each needed contact records its provider-authored exact price without an integer cap", async () => {
   const territory = fixture(), dataRoot = join(territory, "free-compute-data");
   let contacts = 0;
   const dispatch = async (jobs) => {
     contacts += 1;
-    return jobs.map((job) => ({ ...response(job, {
+    return jobs.map((job) => ({ ...response(job, contacts === 1 ? {
       action: "edit",
       args: { path: "calc.mjs", blocks: { search: "a - b", replace: "a * b" } },
       reason: "one grounded but insufficient transition",
+    } : {
+      action: "edit",
+      args: { path: "calc.mjs", blocks: { search: "a * b", replace: "a + b" } },
+      reason: "the next market-priced transition satisfies the oracle",
     }),
       cost: {
         obligations: [{
           id: "resolution-credit", kind: "credit", asset: "urn:union:credit:relative-resolution-milliquanta-v1",
-          amount: 31, unit: "relative-resolution-milliquanta-v1", settlementAdapter: "urn:union:settlement-adapter:direct-witness-v1",
+          amount: { numerator: contacts === 1 ? "31" : "10", denominator: "1" }, unit: "relative-resolution-milliquanta-v1", settlementCapability: "urn:union:settlement-capability:direct-witness-v1",
         }],
       },
     }));
   };
   const result = await runMission({
     id: "urn:test:mission:aggregate-consideration",
-    objective: "Repair addition within the exact aggregate resource grant.",
+    objective: "Repair addition through provider-priced exact transitions.",
     territory,
     verifyCommand: "node --test calc.test.mjs",
     workType: "software-engineering",
     focusPaths: ["calc.mjs"],
     writablePaths: ["calc.mjs"],
-    testVectors: [{ id: "aggregate-grant", given: ["one bounded grant"], when: "one edit does not pass", then: ["no ungranted second contact"], forbidden: [] }],
+    testVectors: [{ id: "priced-retry", given: ["one insufficient paid transition"], when: "the oracle remains red", then: ["the next contact returns to the market"], forbidden: ["integer price coercion"] }],
     requiredCapabilities: ["software-engineering", "json-schema-output"],
   }, { dispatch, dataRoot });
-  assert.equal(contacts, 1);
-  assert.equal(result.processNode.refusal.type, "consideration-budget-exhausted");
-  assert.equal(result.metrics.inferenceContacts, 1);
+  assert.equal(contacts, 2);
+  assert.equal(result.outcome.verified, true);
+  assert.equal(result.metrics.inferenceContacts, 2);
+  assert.deepEqual(result.metrics.expectedConsideration.map(({ amount }) => amount), [
+    { numerator: "31", denominator: "1" },
+    { numerator: "10", denominator: "1" },
+  ]);
 });
 
 test("fixed-point identity observes full writable bytes beyond the capped prompt prefix", async () => {
@@ -580,10 +592,43 @@ test("software engineering is not dispatched with a deficient context packet", a
   assert.equal(dispatched, false);
 });
 
-test("software engineering is not dispatched without executable acceptance examples", async () => {
+test("a fabrication mission derives must-create context from its writable lane", async () => {
+  const territory = mkdtempSync(join(tmpdir(), "union-create-test-"));
+  const dataRoot = join(territory, "free-compute-data");
+  const result = await runMission({
+    id: "urn:test:mission:create-from-writable-lane",
+    objective: "Create the declared capability implementation.",
+    territory,
+    verifyCommand: "node --test test/capability.test.mjs",
+    acceptanceCommand: "node --test test/capability.test.mjs",
+    workType: "software-engineering",
+    requiredCapabilities: ["software-engineering"],
+    writablePaths: ["src/capability.mjs", "test/capability.test.mjs"],
+    readablePaths: [],
+    testVectors: [{
+      id: "declared-operation",
+      given: ["an admitted input"],
+      when: "the capability is invoked",
+      then: ["one typed result is returned"],
+      forbidden: ["undeclared mutation"],
+    }],
+  }, {
+    dataRoot,
+    dispatch: async (jobs) => jobs.map((job) => ({ id: job.id, refusal: { type: "fixture-stop" }, attempts: [] })),
+  });
+
+  assert.equal(result.contextPacket.quality.selfContainment, true);
+  assert.deepEqual(result.contextPacket.lane.focusPaths, ["src/capability.mjs", "test/capability.test.mjs"]);
+  assert.deepEqual(result.contextPacket.targetArtifacts, [
+    { path: "src/capability.mjs", status: "must-create" },
+    { path: "test/capability.test.mjs", status: "must-create" },
+  ]);
+});
+
+test("missing executable acceptance examples become planner observations instead of a dispatch ceiling", async () => {
   const territory = fixture(), dataRoot = join(territory, "free-compute-data");
   let dispatched = false;
-  await assert.rejects(runMission({
+  const result = await runMission({
     id: "urn:test:mission:missing-test-vectors",
     objective: "Repair the admitted calculation source with complete focus evidence.",
     territory,
@@ -594,8 +639,19 @@ test("software engineering is not dispatched without executable acceptance examp
     focusPaths: ["calc.mjs", "calc.test.mjs"],
     writablePaths: ["calc.mjs", "calc.test.mjs"],
     readablePaths: [],
-  }, { dispatch: async () => { dispatched = true; return []; }, dataRoot }), /context packet is deficient: executableAcceptanceExamples/);
-  assert.equal(dispatched, false);
+  }, {
+    dispatch: async () => { dispatched = true; return []; },
+    dataRoot,
+    appendTrajectory: async (trajectory) => trajectory,
+    recallTrajectories: async () => [],
+  });
+  assert.equal(dispatched, true);
+  assert.equal(result.contextPacket.quality.executableAcceptanceExamples, false);
+  assert.equal(result.outcome.continuationRequired, true);
+  assert.equal(result.outcome.classification, "continuation-required");
+  assert.equal(result.metrics.inferenceContacts, 1);
+  assert.match(result.processNode.observations[0], /ContextQualityObservation/);
+  assert.match(result.processNode.observations[0], /executableAcceptanceExamples/);
 });
 
 test("one refused provider contact terminates the process node without replacement", async () => {
@@ -620,55 +676,6 @@ test("one refused provider contact terminates the process node without replaceme
   assert.equal(result.processNode.status, "refused");
   assert.equal(result.processNode.refusal.type, "no-feasible-endpoint");
   assert.equal(result.processNode.refusal.market[0].reason, "demand-exceeds-provider-bound");
-});
-
-test("an explicit provider timeout is passed to the hired market without a session-global clamp", async () => {
-  const territory = fixture(), dataRoot = join(territory, "free-compute-data");
-  let observedTimeout;
-  await runMission({
-    id: "urn:test:mission:provider-timeout-demand",
-    objective: "Pass the customer's explicit provider timeout to the hired inference market.",
-    territory,
-    verifyCommand: "node --test calc.test.mjs",
-    workType: "software-engineering",
-    focusPaths: ["calc.mjs"],
-    writablePaths: ["calc.mjs"],
-    readablePaths: [],
-    providerTimeoutMs: 600_001,
-    testVectors: [{ id: "timeout-forwarding", given: ["an explicit 600001ms provider timeout"], when: "the market is hired", then: ["the market receives 600001ms"], forbidden: ["silent clamping"] }],
-  }, {
-    dataRoot,
-    dispatch: async (jobs, options) => {
-      observedTimeout = options.timeoutMs;
-      return jobs.map((job) => ({ id: job.id, attempts: [], refusal: { type: "test-stop" } }));
-    },
-  });
-  assert.equal(observedTimeout, 600_001);
-});
-
-test("an already-satisfied admitted mission settles with zero inference and no mutation", async () => {
-  const territory = fixture(), dataRoot = join(territory, "free-compute-data");
-  writeFileSync(join(territory, "calc.mjs"), "export const add = (a, b) => a + b;\n");
-  let dispatches = 0;
-  const result = await runMission({
-    id: "urn:test:mission:already-satisfied",
-    objective: "Keep the already-correct addition behavior.",
-    territory,
-    verifyCommand: "node --test calc.test.mjs",
-    workType: "software-engineering",
-    focusPaths: ["calc.mjs"],
-    writablePaths: ["calc.mjs"],
-    readablePaths: [],
-    testVectors: [{ id: "addition-remains-correct", given: ["correct addition source"], when: "tests run", then: ["addition passes"], forbidden: ["unnecessary mutation"] }],
-  }, {
-    dataRoot,
-    dispatch: async () => { dispatches += 1; throw new Error("must not dispatch"); },
-  });
-  assert.equal(result.outcome.classification, "already-satisfied");
-  assert.equal(result.outcome.integrated, true);
-  assert.equal(result.metrics.inferenceContacts, 0);
-  assert.equal(dispatches, 0);
-  assert.equal(readFileSync(join(territory, "calc.mjs"), "utf8"), "export const add = (a, b) => a + b;\n");
 });
 
 test("one protocol-invalid tool action terminates the process node without another inference contact", async () => {
