@@ -61,6 +61,17 @@
         "returns": "SoftwareMissionExecutionResult|SoftwareMissionExecutionRefusal",
         "legacyCompatibility": false
       }
+    },
+    "x-foam-locus": {
+      "address": [
+        "software",
+        "development",
+        "mission",
+        "execution"
+      ],
+      "proposition": "There exists a market-coordinated Actor which advances one durable software mission through context projection, provider procurement, receipt-bearing execution, protected verification, and resumable A2A custody.",
+      "actor": "urn:ame:software-mission-execution-service",
+      "projection": "content/foam/locus.json"
     }
   }
 }

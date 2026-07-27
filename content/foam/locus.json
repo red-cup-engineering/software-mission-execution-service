@@ -1,0 +1,41 @@
+{
+  "type": "OperationalActorModelLocus",
+  "address": [
+    "software",
+    "development",
+    "mission",
+    "execution"
+  ],
+  "actor": "urn:ame:software-mission-execution-service",
+  "operation": "execute-software-mission",
+  "positiveCommitment": "The Actor advances one durable software mission through context projection, inference-provider procurement, receipt-bearing tool transitions, protected verification, and resumable A2A task custody.",
+  "realizedBy": [
+    {
+      "capability": "project-bounded-coding-context",
+      "carrier": "@emsenn/coding-context-projection-service"
+    },
+    {
+      "capability": "discover-and-hire-inference-provider",
+      "carrier": "@emsenn/inference-work-lot-service"
+    },
+    {
+      "capability": "retain-provider-and-trajectory-receipts",
+      "carrier": "@emsenn/software-trajectory-memory-service"
+    },
+    {
+      "capability": "verify-with-author-excluded-acceptance",
+      "carrier": "@emsenn/protected-acceptance-service"
+    },
+    {
+      "capability": "resume-standard-a2a-task-without-replay",
+      "carrier": "@emsenn/a2a-rmn-task-client-service"
+    }
+  ],
+  "negativeCommitments": [
+    "The Actor does not grant an inference provider authority over customer territory.",
+    "The Actor does not treat a provider receipt as customer acceptance.",
+    "The Actor does not require a Codex session to manually reproduce its internal orchestration loop."
+  ],
+  "discoveryFace": "https://bare-cedar-fog.561.group/actors/software-mission-execution/outbox",
+  "messageFace": "https://bare-cedar-fog.561.group/a2a/software-mission-execution/.well-known/agent-card.json"
+}
