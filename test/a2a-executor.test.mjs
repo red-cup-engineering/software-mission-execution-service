@@ -1,9 +1,9 @@
 import assert from "node:assert/strict";
 import test from "node:test";
 import { Message, Role } from "@a2a-js/sdk";
-import { extractRmnPart, rmnPart } from "@emsenn/a2a-rmn-part-service";
-import { semanticId } from "@emsenn/rmn-semantic-conformance";
-import { relationalRwilDocument } from "@emsenn/rwil-rdf-services/client";
+import { extractRmnPart, rmnPart } from "@red-cup-engineering/a2a-rmn-part-service";
+import { semanticId } from "@red-cup-engineering/rmn-semantic-conformance";
+import { relationalRwilDocument } from "@lenticule-science/rwil-rdf-projection-service/client";
 import { ACTOR, executeA2aMessage, operationBytes, operationFromBytes } from "../src/a2a-executor.mjs";
 import { executeSoftwareMission } from "../src/client.mjs";
 

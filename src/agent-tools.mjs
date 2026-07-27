@@ -2,8 +2,8 @@ import { createHash } from "node:crypto";
 import { existsSync, readFileSync, readdirSync, statSync, unlinkSync, writeFileSync } from "node:fs";
 import { dirname, relative, resolve, sep } from "node:path";
 import { mkdirSync } from "node:fs";
-import { applyEditBlocks, prepareCreateArtifact } from "@emsenn/software-edit-language-service";
-import { runTestsCommand } from "@emsenn/sandbox-command-execution-service";
+import { applyEditBlocks, prepareCreateArtifact } from "@red-cup-engineering/software-edit-language-service";
+import { runTestsCommand } from "@red-cup-engineering/sandbox-command-execution-service";
 
 const SKIP = new Set([".git", "node_modules", ".lake", "dist", "coverage"]);
 

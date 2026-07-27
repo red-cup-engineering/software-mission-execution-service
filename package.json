@@ -1,5 +1,5 @@
 {
-  "name": "@emsenn/software-mission-execution-service",
+  "name": "@red-cup-engineering/software-mission-execution-service",
   "version": "1.0.0",
   "private": true,
   "type": "module",
@@ -22,20 +22,20 @@
   },
   "dependencies": {
     "@a2a-js/sdk": "1.0.0-beta.0",
-    "@emsenn/a2a-contracted-agent-service": "file:../../../web-services-section/services/a2a-services-section/services/a2a-contracted-agent-service",
-    "@emsenn/a2a-rmn-part-service": "file:../../../web-services-section/services/a2a-services-section/services/a2a-rmn-part-service",
-    "@emsenn/a2a-rmn-task-client-service": "file:../../../web-services-section/services/a2a-services-section/services/a2a-rmn-task-client-service",
-    "@emsenn/activitypub-services-section": "file:../../../web-services-section/services/activitypub-services-section",
-    "@emsenn/coding-context-projection-service": "file:../coding-context-projection-service",
-    "@emsenn/github-services-section": "file:../../../web-services-section/services/github-services-section",
-    "@emsenn/inference-work-lot-service": "file:../../../../../../../board-of-directors/services/executive-office/services/working-services-section/services/inference-work-lot-service",
-    "@emsenn/protected-acceptance-service": "file:../protected-acceptance-service",
-    "@emsenn/rmn-semantic-conformance": "file:../../../model-services-section/services/relational-model-services-section/services/relational-model-notation-services-section/services/rmn-conformance-service",
-    "@emsenn/rwil-rdf-services": "file:../../../../../lenticule-science/services/obsmetrological-services-section/services/rwil-rdf-services",
-    "@emsenn/sandbox-command-execution-service": "file:../sandbox-command-execution-service",
-    "@emsenn/software-edit-language-service": "file:../software-edit-language-service",
-    "@emsenn/software-trajectory-memory-service": "file:../software-trajectory-memory-service",
-    "@emsenn/x402-services-section": "file:../../../web-services-section/services/x402-services-section",
+    "@red-cup-engineering/a2a-contracted-agent-service": "2.0.0",
+    "@red-cup-engineering/a2a-rmn-part-service": "1.0.0",
+    "@red-cup-engineering/a2a-rmn-task-client-service": "1.1.0",
+    "@red-cup-engineering/activitypub-services-section": "1.0.0",
+    "@red-cup-engineering/coding-context-projection-service": "1.0.0",
+    "@red-cup-engineering/github-services-section": "1.0.0",
+    "@harmonious-union/inference-work-lot-service": "4.0.0",
+    "@red-cup-engineering/protected-acceptance-service": "1.0.0",
+    "@red-cup-engineering/rmn-semantic-conformance": "6.0.0",
+    "@lenticule-science/rwil-rdf-projection-service": "1.0.0",
+    "@red-cup-engineering/sandbox-command-execution-service": "1.0.0",
+    "@red-cup-engineering/software-edit-language-service": "1.0.0",
+    "@red-cup-engineering/software-trajectory-memory-service": "1.0.0",
+    "@red-cup-engineering/x402-services-section": "1.2.0",
     "express": "5.1.0"
   },
   "engines": {
@@ -73,5 +73,23 @@
       "actor": "urn:ame:software-mission-execution-service",
       "projection": "content/foam/locus.json"
     }
+  },
+  "x-semiotic-voxel": {
+    "profile": "org.harmonious-union.semiotic-voxel.v1",
+    "owner": "red-cup-engineering",
+    "kind": "capability-cell",
+    "actor": "urn:ame:software-mission-execution-service",
+    "operations": [
+      "execute-software-mission"
+    ],
+    "capabilities": [
+      {
+        "capability": "software-mission-execution-service",
+        "faces": [
+          "execute-software-mission"
+        ]
+      }
+    ],
+    "package": "@red-cup-engineering/software-mission-execution-service"
   }
 }

@@ -1,7 +1,7 @@
 import { createHash, randomUUID } from "node:crypto";
 import { existsSync, mkdirSync, readFileSync, renameSync, rmSync, writeFileSync } from "node:fs";
 import { dirname, relative, resolve, sep } from "node:path";
-import { runTestsCommand } from "@emsenn/sandbox-command-execution-service";
+import { runTestsCommand } from "@red-cup-engineering/sandbox-command-execution-service";
 
 const digest = (bytes) => `sha256:${createHash("sha256").update(bytes).digest("hex")}`;
 

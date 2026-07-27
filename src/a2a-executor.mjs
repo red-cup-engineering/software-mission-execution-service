@@ -1,8 +1,8 @@
 import { Message, Role } from "@a2a-js/sdk";
-import { extractRmnPart, rmnPart } from "@emsenn/a2a-rmn-part-service";
-import { decodeSemantic, semanticBytes, semanticId } from "@emsenn/rmn-semantic-conformance";
-import { decodeRelationalValue } from "@emsenn/rmn-semantic-conformance/relational-value";
-import { relationalRwilDocument } from "@emsenn/rwil-rdf-services/client";
+import { extractRmnPart, rmnPart } from "@red-cup-engineering/a2a-rmn-part-service";
+import { decodeSemantic, semanticBytes, semanticId } from "@red-cup-engineering/rmn-semantic-conformance";
+import { decodeRelationalValue } from "@red-cup-engineering/rmn-semantic-conformance/relational-value";
+import { relationalRwilDocument } from "@lenticule-science/rwil-rdf-projection-service/client";
 import { runMissionPipeline } from "./mission-pipeline.mjs";
 
 export const ACTOR = "urn:ame:software-mission-execution-service";

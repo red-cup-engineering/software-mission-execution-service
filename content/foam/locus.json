@@ -12,23 +12,23 @@
   "realizedBy": [
     {
       "capability": "project-bounded-coding-context",
-      "carrier": "@emsenn/coding-context-projection-service"
+      "carrier": "@red-cup-engineering/coding-context-projection-service"
     },
     {
       "capability": "discover-and-hire-inference-provider",
-      "carrier": "@emsenn/inference-work-lot-service"
+      "carrier": "@harmonious-union/inference-work-lot-service"
     },
     {
       "capability": "retain-provider-and-trajectory-receipts",
-      "carrier": "@emsenn/software-trajectory-memory-service"
+      "carrier": "@red-cup-engineering/software-trajectory-memory-service"
     },
     {
       "capability": "verify-with-author-excluded-acceptance",
-      "carrier": "@emsenn/protected-acceptance-service"
+      "carrier": "@red-cup-engineering/protected-acceptance-service"
     },
     {
       "capability": "resume-standard-a2a-task-without-replay",
-      "carrier": "@emsenn/a2a-rmn-task-client-service"
+      "carrier": "@red-cup-engineering/a2a-rmn-task-client-service"
     }
   ],
   "negativeCommitments": [

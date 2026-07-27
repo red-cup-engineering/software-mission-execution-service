@@ -3,7 +3,7 @@ import { existsSync, mkdirSync, mkdtempSync, readFileSync, writeFileSync } from 
 import { join } from "node:path";
 import { tmpdir } from "node:os";
 import test from "node:test";
-import { startRwilProviderProcess } from "@emsenn/rwil-rdf-services/test-provider";
+import { startRwilProviderProcess } from "@lenticule-science/rwil-rdf-projection-service/test-provider";
 import { processNodePrompt, runMission as runMissionProvider, softwareEditActionSchema } from "../src/mission-runtime.mjs";
 import { createAgentTools } from "../src/agent-tools.mjs";
 import { appendTrajectory, inducedTrajectoryResolver, promotionReadout, recallTrajectories } from "../../software-trajectory-memory-service/src/memory.mjs";

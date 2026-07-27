@@ -1,5 +1,5 @@
 import { fileURLToPath } from "node:url";
-import { createSettlementStore } from "@emsenn/rwil-rdf-services/client";
+import { createSettlementStore } from "@lenticule-science/rwil-rdf-projection-service/client";
 import { runMission as defaultRunMission } from "./mission-runtime.mjs";
 
 export const MISSION_EXECUTION_ROOT = fileURLToPath(new URL("..", import.meta.url));
@@ -9,7 +9,6 @@ export const ROUTE_OBSERVATION_CATEGORY = "software-mission-execution.route-obse
 async function appendRouteObservation(record, { dataRoot, rwilAgentUrl, settlementCaip2, signal }) {
   const store = createSettlementStore({
     settlementRoot: MISSION_EXECUTION_ROOT,
-    dataRoot,
     agentUrl: rwilAgentUrl,
     caip2: settlementCaip2,
   });
@@ -59,5 +58,5 @@ export async function runMissionPipeline(mission, {
     settlementCaip2,
     signal,
   });
-  return { ...current, phases, route: { ...observation, graphPath: routeRecord.graphPath, objectPath: routeRecord.objectPath, semanticId: routeRecord.documentNi } };
+  return { ...current, phases, route: { ...observation, networkReference: routeRecord.reference, semanticId: routeRecord.documentNi } };
 }

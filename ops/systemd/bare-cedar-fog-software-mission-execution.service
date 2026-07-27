@@ -1,8 +1,8 @@
 [Unit]
 Description=Bare Cedar Fog sovereign software mission execution A2A provider
-After=network-online.target rwil-rdf-services.service bare-cedar-fog-rmn-semantic-conformance.service inference-work-lot-service.service software-trajectory-memory-service.service
+After=network-online.target rwil-rdf-projection-service.service bare-cedar-fog-rmn-semantic-conformance.service inference-work-lot-service.service software-trajectory-memory-service.service
 Wants=network-online.target
-Requires=rwil-rdf-services.service bare-cedar-fog-rmn-semantic-conformance.service inference-work-lot-service.service software-trajectory-memory-service.service
+Requires=rwil-rdf-projection-service.service bare-cedar-fog-rmn-semantic-conformance.service inference-work-lot-service.service software-trajectory-memory-service.service
 
 [Service]
 Environment=INFERENCE_WORK_LOT_AGENT_CARD_URL=https://inference-work-lot-service-1019481907460.us-central1.run.app/.well-known/agent-card.json

@@ -5,12 +5,12 @@ import { join, relative, resolve, sep } from "node:path";
 import { tmpdir } from "node:os";
 import { createAgentTools, territorySnapshot } from "./agent-tools.mjs";
 import { dispatchBatch as defaultDispatch } from "./market-client.mjs";
-import { runTestsCommand } from "@emsenn/sandbox-command-execution-service";
-import { appendSoftwareMissionCheckpoint, appendSoftwareTrajectory, readSoftwareMissionCheckpoint, readSoftwareMissionMemoryContext, readSoftwareTrajectoryPromotion, recallSoftwareTrajectories, resolveInducedSoftwareTrajectory, trajectoryFingerprint, trajectoryRecipeFingerprint } from "@emsenn/software-trajectory-memory-service/client";
-import { buildCodingContextPacket } from "@emsenn/coding-context-projection-service";
-import { resolutionCreditPolicy, validateConsiderationPolicy } from "@emsenn/inference-work-lot-service/consideration";
-import { executeAcceptanceCapsule, loadAcceptanceCapsule, materializeAcceptanceCapsule, validateAcceptanceCapsule } from "@emsenn/protected-acceptance-service/client";
-import { githubApi } from "@emsenn/github-services-section";
+import { runTestsCommand } from "@red-cup-engineering/sandbox-command-execution-service";
+import { appendSoftwareMissionCheckpoint, appendSoftwareTrajectory, readSoftwareMissionCheckpoint, readSoftwareMissionMemoryContext, readSoftwareTrajectoryPromotion, recallSoftwareTrajectories, resolveInducedSoftwareTrajectory, trajectoryFingerprint, trajectoryRecipeFingerprint } from "@red-cup-engineering/software-trajectory-memory-service/client";
+import { buildCodingContextPacket } from "@red-cup-engineering/coding-context-projection-service";
+import { resolutionCreditPolicy, validateConsiderationPolicy } from "@harmonious-union/inference-work-lot-service/consideration";
+import { executeAcceptanceCapsule, loadAcceptanceCapsule, materializeAcceptanceCapsule, validateAcceptanceCapsule } from "@red-cup-engineering/protected-acceptance-service/client";
+import { githubApi } from "@red-cup-engineering/github-services-section";
 
 export const ACTION_SCHEMA = {
   type: "object",
@@ -919,11 +919,10 @@ async function runMaterializedMission(input, {
       processNode: processNode ? { id: processNode.id, status: processNode.status, refusal: processNode.refusal ?? null, actions: processNode.actions, providers: processNode.providers, procurements: processNode.procurements, attempts: processNode.attempts ?? [], observations: processNode.observations, fixedPoint: processNode.fixedPoint ?? null, deterministicResolver: processNode.deterministicResolver ?? null } : null,
     };
     const trajectoryRecord = await appendTrajectory(record, memoryOptions);
-    onEvent({ type: "mission-settled", missionId: manifest.id, outcome, graphPath: trajectoryRecord.graphPath, semanticId: trajectoryRecord.documentNi });
+    onEvent({ type: "mission-settled", missionId: manifest.id, outcome, networkReference: trajectoryRecord.reference, semanticId: trajectoryRecord.documentNi });
     return {
       ...record,
-      graphPath: trajectoryRecord.graphPath,
-      objectPath: trajectoryRecord.objectPath,
+      networkReference: trajectoryRecord.reference,
       semanticId: trajectoryRecord.documentNi,
       // The context projection is the causal promotion view at mission start.
       // A later activation will observe the just-appended trajectory; do not

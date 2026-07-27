@@ -3,7 +3,7 @@ import { mkdtempSync } from "node:fs";
 import { join } from "node:path";
 import { tmpdir } from "node:os";
 import test from "node:test";
-import { startRwilProviderProcess } from "@emsenn/rwil-rdf-services/test-provider";
+import { startRwilProviderProcess } from "@lenticule-science/rwil-rdf-projection-service/test-provider";
 import { runMissionPipeline } from "../src/mission-pipeline.mjs";
 
 let rwil;
