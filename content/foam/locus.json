@@ -23,7 +23,7 @@
       "carrier": "@red-cup-engineering/software-trajectory-memory-service"
     },
     {
-      "capability": "verify-with-author-excluded-acceptance",
+      "capability": "verify-with-digest-bound-fresh-process-assay",
       "carrier": "@red-cup-engineering/protected-acceptance-service"
     },
     {
