@@ -16,13 +16,13 @@
     "serve-software-mission-x402": "./bin/x402-server.mjs"
   },
   "scripts": {
-    "check": "node --check src/client.mjs && node --check src/a2a-executor.mjs && node --check src/market-client.mjs && node --check bin/execute-a2a-message.mjs && node --check bin/serve-a2a.mjs && node --check bin/x402-server.mjs",
+    "check": "node --check src/client.mjs && node --check src/a2a-executor.mjs && node --check src/market-client.mjs && node --check src/activitypub-worker.mjs && node --check bin/execute-a2a-message.mjs && node --check bin/serve-a2a.mjs && node --check bin/x402-server.mjs",
     "test": "node --test",
     "verify": "npm run check && npm test"
   },
   "dependencies": {
     "@a2a-js/sdk": "1.0.0-beta.0",
-    "@red-cup-engineering/a2a-contracted-agent-service": "2.0.0",
+    "@red-cup-engineering/a2a-contracted-agent-service": "2.0.4",
     "@red-cup-engineering/a2a-rmn-part-service": "1.0.0",
     "@red-cup-engineering/a2a-rmn-task-client-service": "1.1.0",
     "@red-cup-engineering/activitypub-services-section": "1.0.0",
@@ -31,7 +31,7 @@
     "@harmonious-union/inference-work-lot-service": "4.0.0",
     "@red-cup-engineering/protected-acceptance-service": "1.0.0",
     "@red-cup-engineering/rmn-semantic-conformance": "6.0.0",
-    "@lenticule-science/rwil-rdf-projection-service": "1.0.0",
+    "@lenticule-science/rwil-rdf-projection-service": "1.0.2",
     "@red-cup-engineering/sandbox-command-execution-service": "1.0.0",
     "@red-cup-engineering/software-edit-language-service": "1.0.0",
     "@red-cup-engineering/software-trajectory-memory-service": "1.0.0",

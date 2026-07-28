@@ -9,11 +9,11 @@ Environment=INFERENCE_WORK_LOT_AGENT_CARD_URL=https://inference-work-lot-service
 Environment=SOFTWARE_TRAJECTORY_MEMORY_AGENT_CARD_URL=http://127.0.0.1:19843/.well-known/agent-card.json
 Environment=SETTLEMENT_CAIP2=eip155:5615610
 Type=simple
-WorkingDirectory=/home/emsenn/info/lib/emsenn/services/561-group/services/red-cup-engineering/services/software-development-services-section/services/software-mission-execution-service
+WorkingDirectory=/home/emsenn/info/lib/emsenn/services/561-group/services/red-cup-engineering/services/software-services-section/services/software-mission-execution-service
 Environment=RWIL_RDF_AGENT=http://127.0.0.1:19764/.well-known/agent-card.json
 Environment=RMN_CONFORMANCE_AGENT=http://127.0.0.1:8786/.well-known/agent-card.json
-Environment=AGENT_CARD_SIGNING_KEY=/home/emsenn/info/lib/emsenn/services/561-group/services/red-cup-engineering/services/software-development-services-section/services/software-mission-execution-service/data/agent-card-signing/ed25519-private.pem
-Environment=AGENT_CARD_JWKS=/home/emsenn/info/lib/emsenn/services/561-group/services/red-cup-engineering/services/software-development-services-section/services/software-mission-execution-service/content/agent-card-signing/jwks.json
+Environment=AGENT_CARD_SIGNING_KEY=/home/emsenn/info/lib/emsenn/services/561-group/services/red-cup-engineering/services/software-services-section/services/software-mission-execution-service/data/agent-card-signing/ed25519-private.pem
+Environment=AGENT_CARD_JWKS=/home/emsenn/info/lib/emsenn/services/561-group/services/red-cup-engineering/services/software-services-section/services/software-mission-execution-service/content/agent-card-signing/jwks.json
 Environment=AGENT_CARD_SIGNING_KID=software-mission-execution-ed25519
 ExecStart=/home/emsenn/.config/nvm/versions/node/v24.13.1/bin/node ../../../web-services-section/services/a2a-services-section/services/a2a-contracted-agent-service/src/serve-contracted-agent.mjs --host 127.0.0.1 --port 8797 --base-url https://bare-cedar-fog.561.group/a2a/software-mission-execution --agent-card content/agent-cards/software-mission-execution.json --executor /home/emsenn/.config/nvm/versions/node/v24.13.1/bin/node --executor-arg bin/execute-a2a-message.mjs
 Restart=on-failure

@@ -7,21 +7,21 @@ PartOf=bare-cedar-fog-software-mission-execution.service
 
 [Service]
 Type=exec
-WorkingDirectory=/home/emsenn/info/lib/emsenn/services/561-group/services/red-cup-engineering/services/software-development-services-section/services/software-mission-execution-service
+WorkingDirectory=/home/emsenn/info/lib/emsenn/services/561-group/services/red-cup-engineering/services/software-services-section/services/software-mission-execution-service
 Environment=HOST=127.0.0.1
 Environment=PORT=15629
 Environment=SETTLEMENT_CAIP2=eip155:5615610
 Environment=SETTLEMENT_ACCOUNT=eip155:5615610:0x02afc351a638176a2213ee9af01c34222700a6e9
 Environment=PRICE_QUOTE_URL=http://127.0.0.1:19960/quote
-Environment=PRICE_QUOTE_DEMAND=/home/emsenn/info/lib/emsenn/services/561-group/services/red-cup-engineering/services/software-development-services-section/services/software-mission-execution-service/content/pricing/alpha-reservation-price-demand.json
-Environment=CAPABILITY_OFFER_PATH=/home/emsenn/info/lib/emsenn/services/561-group/services/red-cup-engineering/services/software-development-services-section/services/software-mission-execution-service/content/offers/current.json
+Environment=PRICE_QUOTE_DEMAND=/home/emsenn/info/lib/emsenn/services/561-group/services/red-cup-engineering/services/software-services-section/services/software-mission-execution-service/content/pricing/alpha-reservation-price-demand.json
+Environment=CAPABILITY_OFFER_PATH=/home/emsenn/info/lib/emsenn/services/561-group/services/red-cup-engineering/services/software-services-section/services/software-mission-execution-service/content/offers/current.json
 Environment=X402_FACILITATOR_URL=http://127.0.0.1:18893
 Environment=OCAPN_ADMISSION_URL=http://127.0.0.1:18894/admit
 Environment=X402_ASSET=0x610178dA211FEF7D417bC0e6FeD39F05609AD788
 Environment="X402_ASSET_NAME=Union Integration Credit"
 Environment=X402_ASSET_VERSION=1
 Environment=SOFTWARE_MISSION_AGENT_CARD_URL=https://bare-cedar-fog.561.group/a2a/software-mission-execution/.well-known/agent-card.json
-Environment=X402_RECEIPT_PATH=/home/emsenn/info/lib/emsenn/services/561-group/services/red-cup-engineering/services/software-development-services-section/services/software-mission-execution-service/data/x402/receipts.jsonl
+Environment=X402_RECEIPT_PATH=/home/emsenn/info/lib/emsenn/services/561-group/services/red-cup-engineering/services/software-services-section/services/software-mission-execution-service/data/x402/receipts.jsonl
 ExecStart=/home/emsenn/.config/nvm/versions/node/v24.13.1/bin/node bin/x402-server.mjs
 Restart=always
 RestartSec=2

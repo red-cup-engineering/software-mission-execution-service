@@ -1,0 +1,8 @@
+{
+  "name": "software-mission-execution-activitypub",
+  "main": "src/activitypub-worker.mjs",
+  "compatibility_date": "2026-07-27",
+  "routes": [{ "pattern": "bare-cedar-fog.561.group/actors/software-mission-execution*", "custom_domain": false }],
+  "kv_namespaces": [{ "binding": "ACTIVITYPUB_KV", "id": "156168663a5d48ea9a9dd1ba961ddd13" }],
+  "queues": { "producers": [{ "binding": "ACTIVITYPUB_INBOX_QUEUE", "queue": "red-cup-engineering-activitypub-delivery" }] }
+}
