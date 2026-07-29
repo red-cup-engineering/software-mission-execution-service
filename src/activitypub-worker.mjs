@@ -28,10 +28,24 @@ function hasCarrierBindings(env) {
     && env?.ACTIVITYPUB_INBOX_QUEUE && typeof env.ACTIVITYPUB_INBOX_QUEUE.send === "function";
 }
 
-function authorized(request, env) {
-  const token = env?.ACTIVITYPUB_INBOX_BEARER_TOKEN;
-  return typeof token === "string" && token.length >= 32
-    && request.headers.get("authorization") === `Bearer ${token}`;
+function nonempty(value) { return typeof value === "string" && value.length > 0; }
+function record(value) { return value !== null && typeof value === "object" && !Array.isArray(value); }
+
+/** ActivityPub/CloudEvents is the public membrane; A2A is only its inner task. */
+export function admitActivityPubCloudEvent(activity) {
+  if (!record(activity) || activity.type !== "Create" || !nonempty(activity.actor) || !record(activity.object)) {
+    throw new TypeError("inbox accepts only an ActivityPub Create from an identified actor");
+  }
+  const event = activity.object;
+  if (event.specversion !== "1.0" || !nonempty(event.id) || !nonempty(event.source)
+      || !nonempty(event.type) || !nonempty(event.time) || event.datacontenttype !== "application/json" || !record(event.data)) {
+    throw new TypeError("Create object must be a structured CloudEvents 1.0 JSON envelope");
+  }
+  const { a2a, ucan, captp, x402 } = event.data;
+  if (!record(a2a) || !nonempty(ucan) || !record(captp) || !record(x402)) {
+    throw new TypeError("CloudEvent data must carry A2A together with UCAN, CapTP, and x402 authority");
+  }
+  return Object.freeze(event);
 }
 
 function actorDocument(origin) {
@@ -39,7 +53,7 @@ function actorDocument(origin) {
     "@context": CONTEXT,
     id: actor(origin), type: "Service", preferredUsername: "software-mission-execution",
     name: "Software Mission Execution Service",
-    summary: "Executes bounded software missions through purchased inference and protected acceptance.",
+    summary: "Receives ActivityPub Creates whose objects are CloudEvents carrying admitted capability work.",
     inbox: inbox(origin), outbox: outbox(origin),
     attachment: outboxItems[0]?.object?.attachment ?? [],
   };
@@ -51,12 +65,26 @@ async function retainArrival(request, env, origin) {
   if (!Number.isSafeInteger(length) || length < 0 || length > MAX_ACTIVITY_BYTES) return refusal("activity-too-large", "inbound activity exceeds the 256 KiB carrier bound", 413);
   let activity;
   try { activity = await request.json(); } catch { return refusal("invalid-activity", "inbound body is not JSON", 400); }
-  if (!activity || typeof activity !== "object" || typeof activity.type !== "string") return refusal("invalid-activity", "inbound body is not an ActivityStreams activity", 400);
+  let cloudEvent;
+  try { cloudEvent = admitActivityPubCloudEvent(activity); } catch (error) {
+    return refusal("inadmissible-carrier", error instanceof Error ? error.message : String(error), 400);
+  }
   const id = crypto.randomUUID();
-  const arrival = Object.freeze({ id, receivedAt: new Date().toISOString(), recipient: inbox(origin), activity });
+  const arrival = Object.freeze({ id, receivedAt: new Date().toISOString(), recipient: inbox(origin), activity, cloudEvent });
   await env.ACTIVITYPUB_KV.put(`activitypub:inbox:${id}`, JSON.stringify(arrival));
   await env.ACTIVITYPUB_INBOX_QUEUE.send({ type: "ActivityPubInboxArrival", id, key: `activitypub:inbox:${id}` });
-  return activityJson({ "@context": CONTEXT, type: "Accept", actor: actor(origin), object: activity.id ?? id }, 202);
+  return activityJson({ "@context": CONTEXT, type: "Accept", actor: actor(origin), object: cloudEvent.id }, 202);
+}
+
+async function deliverArrival(message, env) {
+  if (!hasCarrierBindings(env)) throw new Error("ACTIVITYPUB_KV binding is required");
+  const url = env?.MISSION_EXECUTION_INTERNAL_URL;
+  const key = env?.MISSION_EXECUTION_DELIVERY_KEY;
+  if (!nonempty(url) || !nonempty(key) || key.length < 32) throw new Error("cloud execution delivery binding is absent");
+  const arrival = await env.ACTIVITYPUB_KV.get(message.key, "json");
+  if (!record(arrival) || !record(arrival.cloudEvent)) throw new Error("queued arrival receipt is absent or malformed");
+  const response = await fetch(url, { method: "POST", headers: { "content-type": "application/json", "x-activitypub-delivery-key": key }, body: JSON.stringify(arrival) });
+  if (!response.ok) throw new Error(`cloud execution refused queued arrival: ${response.status}`);
 }
 
 export default {
@@ -68,12 +96,15 @@ export default {
       if (request.method === "POST") return retainArrival(request, env, origin);
       if (request.method === "GET") {
         if (!hasCarrierBindings(env)) return refusal("provider-binding-absent", "ACTIVITYPUB_KV and ACTIVITYPUB_INBOX_QUEUE bindings are required");
-        if (!authorized(request, env)) return refusal("authorization-required", "a bearer token is required to read the private inbox", 401);
-        const listed = await env.ACTIVITYPUB_KV.list({ prefix: "activitypub:inbox:" });
-        const values = await Promise.all(listed.keys.slice(0, 100).map(async ({ name }) => JSON.parse(await env.ACTIVITYPUB_KV.get(name))));
-        return activityJson({ "@context": CONTEXT, id: inbox(origin), type: "OrderedCollection", totalItems: values.length, orderedItems: values });
+        return refusal("inbox-not-readable", "inbox arrivals are private custody records; use delivered ActivityPub receipts", 403);
       }
     }
     return refusal("not-found", "no ActivityPub carrier endpoint matches this request", 404);
+  },
+  async queue(batch, env) {
+    for (const message of batch.messages) {
+      try { await deliverArrival(message.body, env); message.ack(); }
+      catch { message.retry(); }
+    }
   },
 };

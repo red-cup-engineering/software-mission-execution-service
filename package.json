@@ -7,7 +7,6 @@
   "exports": {
     ".": "./src/client.mjs",
     "./client": "./src/client.mjs",
-    "./customer-induction": "./src/customer-induction.mjs",
     "./executor": "./src/a2a-executor.mjs"
   },
   "bin": {
@@ -16,7 +15,7 @@
     "serve-software-mission-x402": "./bin/x402-server.mjs"
   },
   "scripts": {
-    "check": "node --check src/client.mjs && node --check src/a2a-executor.mjs && node --check src/market-client.mjs && node --check src/activitypub-worker.mjs && node --check bin/execute-a2a-message.mjs && node --check bin/serve-a2a.mjs && node --check bin/x402-server.mjs",
+    "check": "node --check src/client.mjs && node --check src/a2a-executor.mjs && node --check src/market-client.mjs && node --check src/activitypub-worker.mjs && node --check bin/execute-a2a-message.mjs && node --check bin/serve-activitypub-cloud-event.mjs && node --check bin/x402-server.mjs",
     "test": "node --test",
     "verify": "npm run check && npm test"
   },

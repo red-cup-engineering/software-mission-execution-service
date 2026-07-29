@@ -280,7 +280,6 @@ function copyTerritory(source) {
 }
 
 async function materializeMissionSource(input, { github = githubApi() } = {}) {
-  if (!input.source) return { territory: resolve(input.territory), descriptor: { kind: "local-territory", path: resolve(input.territory) }, cleanup: null };
   const source = input.source;
   if (source.kind !== "github-repository" || !/^[A-Za-z0-9_.-]+\/[A-Za-z0-9_.-]+$/u.test(source.repository ?? "") || !/^[0-9a-f]{40}$/u.test(source.commit ?? "")) {
     throw new Error("mission source must be a github-repository with owner/name repository and immutable 40-hex commit");
