@@ -5,7 +5,7 @@ repo_root=$script_dir
 while [[ ! -d "$repo_root/lib/emsenn/services/561-group" || ! -d "$repo_root/lib/emsenn/services/561-group/services/board-of-directors" ]]; do parent=$(dirname -- "$repo_root"); [[ "$parent" != "$repo_root" ]] || exit 66; repo_root=$parent; done
 context_dir=${1:-}
 [[ "$context_dir" == /tmp/* ]] || { echo "usage: $0 /tmp/build-context" >&2; exit 64; }
-package=lib/emsenn/services/561-group/services/red-cup-engineering/services/software-services-section/services/software-mission-execution-service
+package=lib/emsenn/services/561-group/services/red-cup-engineering/services/software-services-section/services/software-development-services-section/services/javascript-services-section/services/software-mission-execution-service
 mapfile -t packages < <(node - "$repo_root" "$package" <<'NODE'
 const fs = require("node:fs"), path = require("node:path");
 const root = process.argv[2], entry = path.join(root, process.argv[3]), seen = new Set();

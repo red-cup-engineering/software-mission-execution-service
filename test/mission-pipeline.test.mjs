@@ -3,13 +3,10 @@ import { mkdtempSync } from "node:fs";
 import { join } from "node:path";
 import { tmpdir } from "node:os";
 import test from "node:test";
-import { startRwilProviderProcess } from "@lenticule-science/rwil-rdf-projection-service/test-provider";
 import { runMissionPipeline } from "../src/mission-pipeline.mjs";
 
-let rwil;
 const settlementCaip2 = "eip155:31337";
-test.before(async () => { rwil = await startRwilProviderProcess(); });
-test.after(async () => { await rwil.close(); });
+const routeObservation = async (record) => ({ reference: `urn:test:route:${record.id}`, documentNi: `urn:test:document:${record.id}` });
 
 function result(verified, label) {
   return {
@@ -39,8 +36,7 @@ test("one A2A request performs one knowledge pulse and leaves failure in enterpr
   const settled = await runMissionPipeline(mission, {
     runMission,
     dataRoot,
-    rwilAgentUrl: rwil.agentCardUrl,
-    settlementCaip2,
+    settlementCaip2, recordRouteObservation: routeObservation,
   });
 
   assert.equal(settled.outcome.verified, false);
@@ -58,7 +54,7 @@ test("legacy synchronous routing profiles do not control market continuation", a
   const settled = await runMissionPipeline({
     id: "urn:test:extended-without-rationale", objective: "multi-file assay", territory: dataRoot,
     verifyCommand: "true", routingProfile: "extended",
-  }, { dataRoot, rwilAgentUrl: rwil.agentCardUrl, settlementCaip2, runMission: async () => result(true, "market settled") });
+  }, { dataRoot, settlementCaip2, recordRouteObservation: routeObservation, runMission: async () => result(true, "market settled") });
   assert.deepEqual(settled.route.continuation, { state: "awaiting-customer-induction" });
 });
 
@@ -70,8 +66,7 @@ test("rejects customer token ceilings so provider offers determine capacity", as
     verifyCommand: "true", maxTokens: 8193,
   }, {
     dataRoot,
-    rwilAgentUrl: rwil.agentCardUrl,
-    settlementCaip2,
+    settlementCaip2, recordRouteObservation: routeObservation,
     runMission: async (mission) => { calls.push(mission); return result(true, "provider admitted the requested lot"); },
   }), /maxTokens is retired/u);
   assert.equal(calls.length, 0);
@@ -85,8 +80,7 @@ test("refuses a non-positive token quantity before provider-market selection", a
     verifyCommand: "true", maxTokens: 0,
   }, {
     dataRoot,
-    rwilAgentUrl: rwil.agentCardUrl,
-    settlementCaip2,
+    settlementCaip2, recordRouteObservation: routeObservation,
     runMission: async () => { calls += 1; return result(true, "must not run"); },
   }), /maxTokens is retired/u);
   assert.equal(calls, 0);

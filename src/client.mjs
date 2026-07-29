@@ -5,7 +5,6 @@ import { extractRmnPart, rmnPart } from "@red-cup-engineering/a2a-rmn-part-servi
 import { semanticId } from "@red-cup-engineering/rmn-semantic-conformance";
 import { relationalRwilDocument } from "@lenticule-science/rwil-rdf-projection-service/client";
 import { ACTOR, operationBytes, operationFromBytes } from "./a2a-executor.mjs";
-import { induceVerifiedMissionProposal } from "./customer-induction.mjs";
 
 function rmnId(value) { return semanticId(relationalRwilDocument(value)); }
 function record(body) { return Object.freeze({ id: rmnId(body), ...body }); }
@@ -91,20 +90,8 @@ export async function proposeSoftwareMission(mission, options = {}) {
 }
 
 export async function executeSoftwareMission(mission, options = {}) {
-  const proposed = await proposeSoftwareMission(mission, options);
-  const customerInduction = induceVerifiedMissionProposal(mission, proposed);
-  const outcome = customerInduction
-    ? {
-        ...proposed.outcome,
-        integrated: true,
-        inductionRequired: false,
-        classification: "integrated",
-        integration: { integrated: true, receiver: "software-mission-customer-client" },
-      }
-    : proposed.outcome;
-  return Object.freeze({
-    ...proposed,
-    outcome,
-    ...(customerInduction ? { providerOutcome: proposed.outcome, customerInduction } : {}),
-  });
+  // A hired executor may only return a verified, proposal-only morphism.  The
+  // JS Mark admission boundary owns any later host mutation; keeping this
+  // compatibility name avoids granting a client implicit mutation authority.
+  return proposeSoftwareMission(mission, options);
 }

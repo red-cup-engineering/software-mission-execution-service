@@ -446,7 +446,9 @@ function jobFor(manifest, processNode, contextPacket, considerationPolicy = mani
     considerationPolicy,
     ...(manifest.supplierExclusions.length ? { excludeProviders: manifest.supplierExclusions } : {}),
     messages: [{ role: "system", content: SYSTEM }, { role: "user", content: processNodePrompt(processNode, contextPacket, outputSchema) }],
-    outputContract: { format: "text" },
+    outputContract: manifest.enforceProviderSchema || manifest.requiredCapabilities.includes("json-schema-output")
+      ? { format: "json", mode: "json_schema", schema: outputSchema }
+      : { format: "text" },
   };
 }
 
@@ -500,6 +502,8 @@ async function runMaterializedMission(input, {
   dispatch = defaultDispatch,
   dataRoot,
   rwilAgentUrl = process.env.RWIL_RDF_AGENT,
+  custody,
+  categoryIndex,
   keepWorkspaces = false,
   onEvent = () => {},
   appendTrajectory = appendSoftwareTrajectory,
@@ -588,6 +592,9 @@ async function runMaterializedMission(input, {
     : !manifest.acceptanceCommand || manifest.acceptanceCommand === manifest.verifyCommand ? baselineVerification : runTestsCommand(manifest.territory, manifest.acceptanceCommand);
   const memoryOptions = {
     dataRoot,
+    rwilAgentUrl,
+    custody,
+    categoryIndex,
     agentCardUrl: process.env.SOFTWARE_TRAJECTORY_MEMORY_AGENT_CARD_URL,
     ...(typeof input.causalInvocation === "string" && input.causalInvocation !== ""
       ? { invocation: input.causalInvocation }
@@ -759,6 +766,7 @@ async function runMaterializedMission(input, {
         } else {
           processNode.transitionFingerprints.add(refusalFingerprint);
           processNode.refusal = refusal;
+          if (record?.refusal) processNode.status = "refused";
         }
         onEvent({ type: "process-node-contact-refused", missionId: manifest.id, processNodeId: processNode.id, refusal: processNode.refusal });
         await seatCheckpoint("market-refusal");
@@ -774,7 +782,10 @@ async function runMaterializedMission(input, {
         if (processNode.transitionFingerprints.has(invalidFingerprint)) {
           processNode.status = "stopped";
           processNode.fixedPoint = { type: "repeated-invalid-transition", fingerprint: invalidFingerprint, refusal: processNode.refusal };
-        } else processNode.transitionFingerprints.add(invalidFingerprint);
+        } else {
+          processNode.transitionFingerprints.add(invalidFingerprint);
+          processNode.status = "refused";
+        }
         onEvent({ type: "process-node-action-refused", missionId: manifest.id, processNodeId: processNode.id, action: action.action, refusal: processNode.refusal });
         await seatCheckpoint("action-refusal");
         break contactLot;
@@ -815,6 +826,7 @@ async function runMaterializedMission(input, {
       const verdict = (() => { try { return JSON.parse(observation); } catch { return null; } })();
       if (verdict?.error && verdict?.terminal === true) {
         processNode.refusal = { type: "invalid-action-candidate", reason: verdict.error };
+        processNode.status = "refused";
         onEvent({ type: "process-node-action-refused", missionId: manifest.id, processNodeId: processNode.id, action: action.action, refusal: processNode.refusal });
       } else if (processNode.tools.changed.size > 0 && verdict?.verification?.passed === true && verdict?.acceptance?.passed === true) {
         processNode.status = "verified";

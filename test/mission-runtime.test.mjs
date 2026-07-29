@@ -3,26 +3,49 @@ import { existsSync, mkdirSync, mkdtempSync, readFileSync, writeFileSync } from 
 import { join } from "node:path";
 import { tmpdir } from "node:os";
 import test from "node:test";
-import { startRwilProviderProcess } from "@lenticule-science/rwil-rdf-projection-service/test-provider";
 import { processNodePrompt, runMission as runMissionProvider, softwareEditActionSchema } from "../src/mission-runtime.mjs";
 import { createAgentTools } from "../src/agent-tools.mjs";
-import { appendTrajectory, inducedTrajectoryResolver, promotionReadout, recallTrajectories } from "../../software-trajectory-memory-service/src/memory.mjs";
+import { inducedTrajectoryResolver, missionMemoryContext, promotionReadout, recallTrajectories } from "../../software-trajectory-memory-service/src/memory.mjs";
 import { prepareAcceptanceCapsule } from "../../protected-acceptance-service/src/acceptance-capsule.mjs";
 
-function runMission(input, options = {}) {
-  return runMissionProvider(input, { appendTrajectory, recallTrajectories, resolveInducedTrajectory: inducedTrajectoryResolver, promotionReadout, ...options });
+function networkFixture() {
+  const objects = new Map(), memberships = new Map();
+  return {
+    custody: {
+      async put({ ni, bytes, mediaType }) { objects.set(ni, { ni, bytes: Buffer.from(bytes), mediaType }); return { profile: "org.red-cup-engineering.immutable-content-reference.v1", ni, key: ni, byteLength: bytes.length, mediaType }; },
+      async get(reference) { return objects.get(typeof reference === "string" ? reference : reference.ni) ?? null; },
+    },
+    categoryIndex: {
+      async add({ predicate, category, ni }) { const key = `${predicate}\n${category}`; if (!memberships.has(key)) memberships.set(key, new Set()); memberships.get(key).add(ni); return { predicate, category, ni }; },
+      async query(category, { predicate }) { return { references: [...(memberships.get(`${predicate}\n${category}`) ?? [])].map((ni) => ({ ni })), continuationToken: undefined }; },
+    },
+  };
 }
+const network = networkFixture();
+const trajectoryRowsByDataRoot = new Map();
+const rowsFor = (input, options) => {
+  const key = options.dataRoot ?? input.territory;
+  if (!trajectoryRowsByDataRoot.has(key)) trajectoryRowsByDataRoot.set(key, []);
+  return trajectoryRowsByDataRoot.get(key);
+};
 
-let rwil;
-const priorRwilAgent = process.env.RWIL_RDF_AGENT;
-test.before(async () => {
-  rwil = await startRwilProviderProcess();
-  process.env.RWIL_RDF_AGENT = rwil.agentCardUrl;
-});
-test.after(async () => {
-  priorRwilAgent === undefined ? delete process.env.RWIL_RDF_AGENT : process.env.RWIL_RDF_AGENT = priorRwilAgent;
-  await rwil.close();
-});
+function runMission(input, options = {}) {
+  const rows = rowsFor(input, options);
+  const memoryOptions = () => ({ rows, ...network });
+  const appendTrajectory = async (record) => {
+    rows.push(record);
+    return { reference: { profile: "test-rwil-memory", document: { ni: record.id } }, documentNi: record.id };
+  };
+  return runMissionProvider(input, {
+    appendTrajectory,
+    recallTrajectories: (objective, options) => recallTrajectories(objective, { ...options, ...memoryOptions() }),
+    readMemoryContext: (objective, taskClass, missionId, sourceIdentity, options) => missionMemoryContext(objective, taskClass, missionId, sourceIdentity, { ...options, ...memoryOptions() }),
+    resolveInducedTrajectory: (taskClass, options) => inducedTrajectoryResolver(taskClass, { ...options, ...memoryOptions() }),
+    promotionReadout: (taskClass, options) => promotionReadout(taskClass, { ...options, ...memoryOptions() }),
+    ...network,
+    ...options,
+  });
+}
 
 function fixture() {
   const root = mkdtempSync(join(tmpdir(), "union-dev-test-"));
@@ -40,6 +63,7 @@ function fixture() {
 function response(job, action) {
   return { id: job.id, text: JSON.stringify(action), attempts: [{ endpoint: "mock-free-cloud", outcome: "completion" }] };
 }
+const additionAcceptanceVector = Object.freeze({ id: "addition-acceptance", given: ["calc.mjs subtracts two operands"], when: "the implementation replaces subtraction with addition", then: ["node --test calc.test.mjs passes"], forbidden: ["customer mutation"] });
 
 async function protectedAdditionCapsule(territory) {
   const capsule = await prepareAcceptanceCapsule({
@@ -50,7 +74,10 @@ async function protectedAdditionCapsule(territory) {
     command: "node --test union-acceptance/addition.test.mjs",
     testVectors: [{ id: "addition-vector", given: ["two and three"], when: "add is invoked", then: ["five is returned"], forbidden: ["subtraction"] }],
     artifacts: [{ path: "union-acceptance/addition.test.mjs", text: 'import test from "node:test";\nimport assert from "node:assert/strict";\nimport { add } from "../calc.mjs";\ntest("addition-vector", () => assert.equal(add(2, 3), 5));\n' }],
-  }, { reviewOracle: async () => ({ accepted: true, reviews: [{ endpoint: "independent-acceptance-reviewer" }] }) });
+  }, {
+    assayOracle: async () => ({ accepted: true, failures: [] }),
+    reviewOracle: async () => ({ accepted: true, reviews: [{ endpoint: "independent-acceptance-reviewer" }] }),
+  });
   const path = join(territory, "protected-addition-capsule.json");
   writeFileSync(path, JSON.stringify(capsule));
   return path;
@@ -214,6 +241,7 @@ test("one process-node contact verifies and records a receiver-bound proposal", 
     objective: "Repair the add function so the declared test passes.",
     territory,
     verifyCommand: "node --test calc.test.mjs",
+    testVectors: [additionAcceptanceVector],
     focusPaths: ["calc.mjs", "calc.test.mjs"],
     writablePaths: ["calc.mjs"],
   }, { dispatch, dataRoot });
@@ -241,7 +269,7 @@ test("one process-node contact verifies and records a receiver-bound proposal", 
   assert.equal(result.processNode.procurements[0].schemaAssay, "ni:///sha-256;assay");
   assert.equal(result.processNode.procurements[0].considerationDisposition, "credit-issued");
   assert.match(readFileSync(join(territory, "calc.mjs"), "utf8"), /a - b/);
-  assert.equal(existsSync(result.graphPath), true);
+  assert.equal(result.networkReference.profile, "test-rwil-memory");
 });
 
 test("a schema-capable mission mechanically requests the action schema", async () => {
@@ -277,7 +305,7 @@ test("a schema-capable mission mechanically requests the action schema", async (
   const editBlock = editAlternative.properties.args.oneOf[0].properties.blocks;
   assert.deepEqual(observedContract.schema.required, ["action", "args"]);
   assert.equal(observedContract.schema.properties.reason, undefined);
-  assert.ok(editBlock.properties.anchor.enum.every((anchor) => /^a-[0-9a-f]{16}$/u.test(anchor)));
+  assert.ok(editBlock.properties.anchor.enum.every((anchor) => /^a-[0-9a-f]{64}$/u.test(anchor)));
   assert.equal(editBlock.properties.search, undefined);
   assert.match(observedPrompt, /"editAnchors":/u);
   assert.match(observedPrompt, /export const add = \(a, b\) => a - b;/u);
@@ -318,6 +346,7 @@ test("green verification and red acceptance contract the next edit to acceptance
     territory,
     verifyCommand: "node --test calc.test.mjs",
     acceptanceCommand: "rg -q accepted witness.txt && node --test calc.test.mjs",
+    testVectors: [additionAcceptanceVector],
     workType: "software-engineering",
     requiredCapabilities: ["software-engineering", "json-schema-output"],
     focusPaths: ["calc.mjs", "witness.txt"],
@@ -484,7 +513,7 @@ test("an abort at action settlement retains the passing action evidence without 
   const events = [];
   const result = await runMission({
     id: "urn:test:mission:abort-at-action-settlement", objective: "Repair addition unless the external lifecycle is stopped.", territory,
-    verifyCommand: "node --test calc.test.mjs", writablePaths: ["calc.mjs"],
+    verifyCommand: "node --test calc.test.mjs", testVectors: [additionAcceptanceVector], writablePaths: ["calc.mjs"],
   }, {
     dispatch: async (requested) => [response(requested[0], {
       action: "edit",
@@ -515,7 +544,7 @@ test("an abort after provider contact preserves returned attempt and procurement
   let contacts = 0;
   const result = await runMission({
     id: "urn:test:mission:abort-after-contact", objective: "Stop after recording the contacted provider.", territory,
-    verifyCommand: "node --test calc.test.mjs",
+    verifyCommand: "node --test calc.test.mjs", testVectors: [additionAcceptanceVector],
   }, { dispatch: async (requested) => {
     contacts += 1;
     controller.abort();
@@ -542,7 +571,7 @@ test("a dispatch AbortError records the contacted unknown-receipt boundary befor
   const territory = fixture(), dataRoot = join(territory, "free-compute-data"), controller = new AbortController();
   const result = await runMission({
     id: "urn:test:mission:dispatch-abort", objective: "Stop when the contacted dispatch boundary aborts.", territory,
-    verifyCommand: "node --test calc.test.mjs",
+    verifyCommand: "node --test calc.test.mjs", testVectors: [additionAcceptanceVector],
   }, { dispatch: async () => {
     controller.abort();
     const error = new Error("provider contact aborted");
@@ -570,6 +599,7 @@ test("mission readablePaths are mechanically projected into the isolated process
     objective: "Prove that process-node reads are confined to the declared test file.",
     territory,
     verifyCommand: "node --test calc.test.mjs",
+    testVectors: [additionAcceptanceVector],
     readablePaths: ["calc.test.mjs"],
   }, { dispatch, dataRoot });
 
@@ -666,6 +696,7 @@ test("one refused provider contact terminates the process node without replaceme
     objective: "Repair the add function so the declared test passes.",
     territory,
     verifyCommand: "node --test calc.test.mjs",
+    testVectors: [additionAcceptanceVector],
   }, { dispatch, dataRoot });
 
   assert.equal(result.outcome.verified, false);
@@ -695,6 +726,7 @@ test("one protocol-invalid tool action terminates the process node without anoth
     objective: "Repair the add function so the declared test passes.",
     territory,
     verifyCommand: "node --test calc.test.mjs",
+    testVectors: [additionAcceptanceVector],
     writablePaths: ["calc.mjs"],
   }, { dispatch, dataRoot, onEvent: (event) => events.push(event) });
 
@@ -723,6 +755,7 @@ test("the process node does not return to the market after its selected supplier
     objective: "Repair addition even when the initially sharded supplier refuses.",
     territory,
     verifyCommand: "node --test calc.test.mjs",
+    testVectors: [additionAcceptanceVector],
   }, { dispatch, dataRoot });
 
   assert.equal(lots.length, 1);
@@ -749,6 +782,7 @@ test("a first refused contact is terminal even when later responses were availab
     objective: "Repair the add function so the declared test passes.",
     territory,
     verifyCommand: "node --test calc.test.mjs",
+    testVectors: [additionAcceptanceVector],
   }, { dispatch, dataRoot });
 
   assert.equal(result.outcome.verified, false);

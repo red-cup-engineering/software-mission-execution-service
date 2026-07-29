@@ -17,6 +17,7 @@ async function appendRouteObservation(record, { dataRoot, rwilAgentUrl, settleme
 
 export async function runMissionPipeline(mission, {
   runMission = defaultRunMission,
+  recordRouteObservation = appendRouteObservation,
   signal,
   dataRoot = process.env.SOFTWARE_MISSION_EXECUTION_DATA_ROOT ?? DEFAULT_MISSION_EXECUTION_DATA_ROOT,
   rwilAgentUrl = process.env.RWIL_RDF_AGENT,
@@ -52,7 +53,7 @@ export async function runMissionPipeline(mission, {
           ? { state: "answered" }
         : { state: "durable-demand-open", nextAct: "return-to-capability-market" },
   };
-  const routeRecord = await appendRouteObservation(observation, {
+  const routeRecord = await recordRouteObservation(observation, {
     dataRoot,
     rwilAgentUrl,
     settlementCaip2,

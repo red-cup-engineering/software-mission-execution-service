@@ -46,7 +46,7 @@
     "actor": "urn:ame:software-mission-execution-service",
     "organizational-kind": "software-execution-provider",
     "owners": [
-      "software-development-services-section"
+      "javascript-services-section"
     ],
     "admission": "one canonical RMN/CBOR SoftwareMissionExecutionRequest received through the hired A2A 1.0 provider",
     "refusal": "unbounded territory or tools, incomplete acceptance evidence, provider self-attestation, customer-border overwrite, noncanonical identity, or direct JSON/local-process customer invocation",
@@ -76,7 +76,7 @@
   },
   "x-semiotic-voxel": {
     "profile": "org.harmonious-union.semiotic-voxel.v1",
-    "owner": "red-cup-engineering",
+    "owner": "javascript-services-section",
     "kind": "capability-cell",
     "actor": "urn:ame:software-mission-execution-service",
     "operations": [

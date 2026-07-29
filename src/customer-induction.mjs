@@ -1,89 +1,30 @@
-import { createHash, randomUUID } from "node:crypto";
-import { existsSync, mkdirSync, readFileSync, renameSync, rmSync, writeFileSync } from "node:fs";
-import { dirname, relative, resolve, sep } from "node:path";
-import { runTestsCommand } from "@red-cup-engineering/sandbox-command-execution-service";
+// This cell is intentionally host-neutral.  A supplier can prove and propose
+// a transition; only the JS Mark admission boundary may inspect a filesystem,
+// check its preimages, and perform the transition.
+import { semanticId } from "@red-cup-engineering/rmn-semantic-conformance";
+import { relationalRwilDocument } from "@lenticule-science/rwil-rdf-projection-service/client";
 
-const digest = (bytes) => `sha256:${createHash("sha256").update(bytes).digest("hex")}`;
+const rmnId = (value) => semanticId(relationalRwilDocument(value));
+const record = (body) => Object.freeze({ id: rmnId(body), ...body });
 
-function inside(root, requested) {
-  const path = resolve(root, requested);
-  if (path !== root && !path.startsWith(`${root}${sep}`)) throw new Error(`proposal path escapes mission territory: ${requested}`);
-  return path;
-}
-
-function admitted(path, writablePaths) {
-  return writablePaths.some((allowed) => path === allowed || path.startsWith(`${allowed}${sep}`));
-}
-
-function restore(backups) {
-  for (const { target, existed, bytes } of [...backups].reverse()) {
-    if (existed) {
-      mkdirSync(dirname(target), { recursive: true });
-      writeFileSync(target, bytes);
-    } else {
-      rmSync(target, { force: true });
-    }
-  }
-}
-
-export function induceVerifiedMissionProposal(mission, result) {
-  if (mission.induceVerifiedChanges === false || result?.outcome?.candidateVerified !== true) return null;
-  const proposal = result.outcome?.proposal;
-  if (proposal?.type !== "SoftwareMissionChangeProposal" || proposal.proposalOnly !== true
-      || proposal.customerMutation !== false || !Array.isArray(proposal.changes)
-      || proposal.changes.length === 0) {
-    throw new Error("verified mission result lacks one proposal-only change set");
-  }
-  const root = resolve(mission.territory);
-  const writablePaths = [...new Set((mission.writablePaths ?? []).map((path) => relative(root, inside(root, path))))];
-  if (writablePaths.length === 0) throw new Error("customer induction requires an explicit writable lane");
-
+function verifiedProposal(mission, result) {
+  if (mission?.induceVerifiedChanges === false || result?.outcome?.candidateVerified !== true) return null;
+  const proposal = result.outcome.proposal;
+  if (proposal?.type !== "SoftwareMissionChangeProposal" || proposal.proposalOnly !== true || proposal.customerMutation !== false || !Array.isArray(proposal.changes) || proposal.changes.length === 0) throw new Error("verified mission result lacks one proposal-only change set");
+  if (!Array.isArray(mission.writablePaths) || mission.writablePaths.length === 0) throw new Error("customer induction requires an explicit writable lane");
   const seen = new Set();
-  const prepared = proposal.changes.map((change) => {
-    const target = inside(root, change.path);
-    const path = relative(root, target);
-    if (seen.has(path)) throw new Error(`proposal repeats path: ${path}`);
-    seen.add(path);
-    if (!admitted(path, writablePaths)) throw new Error(`proposal path is outside the customer writable lane: ${path}`);
-    const after = Buffer.from(change.afterBytesBase64, "base64");
-    if (digest(after) !== change.afterDigest) throw new Error(`proposal after digest mismatch: ${path}`);
-    const existed = existsSync(target);
-    const before = existed ? readFileSync(target) : Buffer.alloc(0);
-    const currentDigest = digest(before);
-    if (currentDigest === change.afterDigest) return { target, path, after, existed, before, alreadyApplied: true };
-    if (existed !== change.beforeExisted || currentDigest !== change.beforeDigest) throw new Error(`proposal before-state drift: ${path}`);
-    return { target, path, after, existed, before, alreadyApplied: false };
-  });
-
-  const backups = [];
-  try {
-    for (const change of prepared.filter(({ alreadyApplied }) => !alreadyApplied)) {
-      mkdirSync(dirname(change.target), { recursive: true });
-      const temporary = `${change.target}.mission-induction-${randomUUID()}`;
-      writeFileSync(temporary, change.after, { flag: "wx", mode: 0o600 });
-      backups.push(change);
-      renameSync(temporary, change.target);
-    }
-    const verification = runTestsCommand(root, mission.verifyCommand);
-    const acceptance = mission.acceptanceCommand === mission.verifyCommand
-      ? verification
-      : runTestsCommand(root, mission.acceptanceCommand ?? mission.verifyCommand);
-    if (!verification.passed || !acceptance.passed) {
-      restore(backups);
-      throw new Error(`customer induction checks failed: ${verification.output || acceptance.output}`);
-    }
-    return Object.freeze({
-      type: "SoftwareMissionCustomerInductionReceipt",
-      providerProposal: result.semanticId ?? null,
-      territory: root,
-      appliedPaths: prepared.filter(({ alreadyApplied }) => !alreadyApplied).map(({ path }) => path),
-      alreadyAppliedPaths: prepared.filter(({ alreadyApplied }) => alreadyApplied).map(({ path }) => path),
-      verification: { passed: true },
-      acceptance: { passed: true },
-      inducedAt: new Date().toISOString(),
-    });
-  } catch (error) {
-    if (backups.length) restore(backups);
-    throw error;
+  for (const change of proposal.changes) {
+    if (typeof change?.path !== "string" || !change.path || change.path.startsWith("/") || change.path.split("/").includes("..") || seen.has(change.path)) throw new Error(`invalid proposal path: ${change?.path}`);
+    seen.add(change.path);
+    if (!mission.writablePaths.some((lane) => change.path === lane || change.path.startsWith(`${lane}/`))) throw new Error(`proposal path is outside the customer writable lane: ${change.path}`);
+    if (typeof change.beforeDigest !== "string" || typeof change.afterDigest !== "string" || typeof change.afterBytesBase64 !== "string") throw new Error(`proposal change lacks canonical delta evidence: ${change.path}`);
   }
+  return proposal;
+}
+
+/** Produce the sole input to host admission.  This does not inspect or mutate
+ * `territory`; that reference is opaque until the JS Mark resolves it. */
+export function induceVerifiedMissionProposal(mission, result) {
+  const proposal = verifiedProposal(mission, result); if (proposal === null) return null;
+  return record({ type: "SoftwareMissionCustomerInductionManifest", providerProposal: result.semanticId ?? null, mission: mission.id ?? null, territory: mission.territory, writablePaths: [...mission.writablePaths], verifyCommand: mission.verifyCommand, acceptanceCommand: mission.acceptanceCommand ?? mission.verifyCommand, proposal, disposition: "proposal-awaiting-js-mark-admission", customerMutation: false });
 }

@@ -32,7 +32,7 @@ test("a generic Actor sees one consistent orchestration operation across FOAM, d
     "project-bounded-coding-context",
     "discover-and-hire-inference-provider",
     "retain-provider-and-trajectory-receipts",
-    "verify-with-author-excluded-acceptance",
+    "verify-with-digest-bound-fresh-process-assay",
     "resume-standard-a2a-task-without-replay",
   ]);
 });
