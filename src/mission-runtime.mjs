@@ -11,6 +11,7 @@ import { buildCodingContextPacket } from "@red-cup-engineering/coding-context-pr
 import { resolutionCreditPolicy, validateConsiderationPolicy } from "@harmonious-union/inference-work-lot-service/consideration";
 import { executeAcceptanceCapsule, loadAcceptanceCapsule, materializeAcceptanceCapsule, validateAcceptanceCapsule } from "@red-cup-engineering/protected-acceptance-service/client";
 import { githubApi } from "@red-cup-engineering/github-services-section";
+import { actionBlocks, parseSoftwareMissionActionRecord } from "../../software-mission-action-record-parser-service/src/action-record-parser.mjs";
 
 export const ACTION_SCHEMA = {
   type: "object",
@@ -143,68 +144,6 @@ export function softwareEditActionSchema(writablePaths = [], workspaceEvidence =
 const SYSTEM = `You are one hired inference interior of a durable software process node operating an isolated copy of one admitted territory. Reason freely in your native text, then conclude with one Markdown tool proposal that the customer deterministically projects and validates. The reasoning is retained as trajectory evidence and is never treated as the tool call. Use TOOL: create plus PATH: and CONTENT: followed by one fenced source block; or TOOL: edit plus PATH: and paired SEARCH:/REPLACE: fenced blocks; or TOOL: read/list_files/search/test/finish with the plainly labeled arguments needed. For an inquiry, finish with TOOL: finish followed by the complete answer between ---BEGIN WORK PRODUCT--- and ---END WORK PRODUCT---. JSON is neither required nor preferred. Available actions:
 list_files {path?,max?}; search {query,path?}; read {path,startLine?,endLine?}; edit {path,blocks}; create {path,content}; command {name}; test {}; finish {summary?}.
 Include only the arguments used by the selected action. For edit, blocks are one {search,replace} object or a nonempty ordered array of exact blocks; do not put marker text inside either field. Search is an exact nonempty current substring. For a target marked absent, use create with nonempty content. The host presents current writable bytes again on every contact; work from those bytes, not an earlier packet. A readout is one transition and the next contact receives its observation. You have no shell. Do not explore operational data records unless the objective names them. Make the complete coherent change required by the objective. The host automatically runs the declared verification after every edit. Never claim success without a passing verification result.`;
-
-function extractJsonRecord(text) {
-  const candidates = [];
-  for (const match of String(text).matchAll(/```(?:json)?\s*([\s\S]*?)```/giu)) candidates.push(match[1]);
-  candidates.push(String(text).trim());
-  for (const candidate of candidates) {
-    try {
-      const value = JSON.parse(candidate);
-      if (value && typeof value === "object" && !Array.isArray(value)) return value;
-    } catch { /* Try the next deterministic carrier. */ }
-  }
-  return null;
-}
-
-function extractMarkdownAction(text) {
-  const source = String(text);
-  const tool = source.match(/(?:^|\n)\s*TOOL\s*:\s*([a-z_]+)\s*(?:\n|$)/iu)?.[1]?.toLowerCase();
-  if (!tool) return null;
-  const aliases = { read_file: "read", list_dir: "list_files", edit_file: "edit", create_file: "create", run_test: "test" };
-  const action = aliases[tool] ?? tool;
-  const path = source.match(/(?:^|\n)\s*PATH\s*:\s*([^\n]+)\s*(?:\n|$)/iu)?.[1]?.trim();
-  const query = source.match(/(?:^|\n)\s*QUERY\s*:\s*([^\n]+)\s*(?:\n|$)/iu)?.[1]?.trim();
-  const fencedAfter = (label) => source.match(new RegExp("(?:^|\\n)\\s*" + label + "\\s*:\\s*\\n\\s*```(?:[^\\n]*)\\n([\\s\\S]*?)\\n```", "iu"))?.[1];
-  if (action === "create" && path) {
-    const content = fencedAfter("CONTENT");
-    return typeof content === "string" ? { action, args: { path, content }, reason: "provider proposed a source creation in natural text" } : null;
-  }
-  if (action === "edit" && path) {
-    const search = fencedAfter("SEARCH"), replace = fencedAfter("REPLACE");
-    return typeof search === "string" && typeof replace === "string" ? { action, args: { path, blocks: [{ search, replace }] }, reason: "provider proposed a source edit in natural text" } : null;
-  }
-  if (["read", "list_files"].includes(action)) return { action, args: path ? { path } : {}, reason: "provider proposed an observation in natural text" };
-  if (action === "search" && query) return { action, args: { query, ...(path ? { path } : {}) }, reason: "provider proposed a search in natural text" };
-  if (action === "finish") {
-    const begin = "---BEGIN WORK PRODUCT---", end = "---END WORK PRODUCT---";
-    const from = source.lastIndexOf(begin), to = source.lastIndexOf(end);
-    const summary = from >= 0 && to > from ? source.slice(from + begin.length, to).trim() : "";
-    return { action, args: summary ? { summary } : {}, reason: "provider proposed a control transition in natural text" };
-  }
-  if (action === "test") return { action, args: {}, reason: "provider proposed a control transition in natural text" };
-  return null;
-}
-
-function parseAction(record) {
-  if (!record || typeof record.text !== "string") return null;
-  const value = extractJsonRecord(record.text);
-  if (!value) return extractMarkdownAction(record.text);
-  const aliases = { read_file: "read", list_dir: "list_files", edit_file: "edit", create_file: "create", run_test: "test", apply_patch: "edit" };
-  if (typeof value.action === "string") return { action: aliases[value.action] || value.action, args: value.args && typeof value.args === "object" ? value.args : Object.fromEntries(Object.entries(value).filter(([key]) => !["action", "reason"].includes(key))), reason: value.reason || "provider selected this next tool move" };
-  if (typeof value.command === "string") return { action: aliases[value.command] || value.command, args: Object.fromEntries(Object.entries(value).filter(([key]) => !["command", "reason"].includes(key))), reason: value.reason || "provider selected this next tool move" };
-  for (const name of ["list_files", "list_dir", "search", "read", "read_file", "edit", "edit_file", "create", "create_file", "test", "run_test", "finish"]) {
-    if (value[name] !== undefined) return { action: aliases[name] || name, args: value[name] && typeof value[name] === "object" ? value[name] : {}, reason: value.reason || "provider selected this next tool move" };
-  }
-  if (typeof value.path === "string") return { action: value.blocks !== undefined ? "edit" : value.content !== undefined ? "create" : "read", args: value, reason: value.blocks !== undefined ? "provider supplied a source edit" : value.content !== undefined ? "provider supplied a source creation" : "provider selected a source path to inspect" };
-  return null;
-}
-
-function actionBlocks(action) {
-  if (action?.action !== "edit") return null;
-  const blocks = action.args?.blocks;
-  return Array.isArray(blocks) ? blocks : blocks && typeof blocks === "object" ? [blocks] : null;
-}
 
 function validateCurrentEdit(action, processNode, writablePaths) {
   if (action?.action !== "edit") return null;
@@ -748,7 +687,7 @@ async function runMaterializedMission(input, {
         processNode.refusal = { type: "aborted" };
         break contactLot;
       }
-      const parsedAction = parseAction(record);
+      const parsedAction = parseSoftwareMissionActionRecord(record);
       const action = resolveContractEdit(
         parsedAction,
         processNode,
