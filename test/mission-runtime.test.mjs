@@ -34,7 +34,7 @@ function runMission(input, options = {}) {
   const memoryOptions = () => ({ rows, ...network });
   const appendTrajectory = async (record) => {
     rows.push(record);
-    return { reference: { profile: "test-rwil-memory", document: { ni: record.id } }, documentNi: record.id };
+    return { reference: { profile: "test-witness-journal-memory", document: { ni: record.id } }, documentNi: record.id };
   };
   return runMissionProvider(input, {
     appendTrajectory,
@@ -269,7 +269,7 @@ test("one process-node contact verifies and records a receiver-bound proposal", 
   assert.equal(result.processNode.procurements[0].schemaAssay, "ni:///sha-256;assay");
   assert.equal(result.processNode.procurements[0].considerationDisposition, "credit-issued");
   assert.match(readFileSync(join(territory, "calc.mjs"), "utf8"), /a - b/);
-  assert.equal(result.networkReference.profile, "test-rwil-memory");
+  assert.equal(result.networkReference.profile, "test-witness-journal-memory");
 });
 
 test("a schema-capable mission mechanically requests the action schema", async () => {

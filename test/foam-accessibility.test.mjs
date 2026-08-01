@@ -4,7 +4,7 @@ import test from "node:test";
 import { Message, Role } from "@a2a-js/sdk";
 import { extractRmnPart, rmnPart } from "@red-cup-engineering/a2a-rmn-part-service";
 import { semanticId } from "@red-cup-engineering/rmn-semantic-conformance";
-import { relationalRwilDocument } from "@lenticule-science/rwil-rdf-projection-service/client";
+import { relationalWitnessJournalDocument } from "@lenticule-science/witness-journal-rdf-projection-service/client";
 import { ACTOR, executeA2aMessage, operationBytes, operationFromBytes } from "../src/a2a-executor.mjs";
 
 const readJson = (path) => JSON.parse(readFileSync(new URL(path, import.meta.url), "utf8"));
@@ -15,7 +15,7 @@ const manifest = readJson("../package.json");
 const operation = "execute-software-mission";
 
 function exact(body) {
-  return { id: semanticId(relationalRwilDocument(body)), ...body };
+  return { id: semanticId(relationalWitnessJournalDocument(body)), ...body };
 }
 
 test("a generic Actor sees one consistent orchestration operation across FOAM, discovery, package, and Agent Card", () => {

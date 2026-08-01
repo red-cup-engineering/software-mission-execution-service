@@ -3,7 +3,7 @@ import test from "node:test";
 import { Message, Role } from "@a2a-js/sdk";
 import { extractRmnPart, rmnPart } from "@red-cup-engineering/a2a-rmn-part-service";
 import { semanticId } from "@red-cup-engineering/rmn-semantic-conformance";
-import { relationalRwilDocument } from "@lenticule-science/rwil-rdf-projection-service/client";
+import { relationalWitnessJournalDocument } from "@lenticule-science/witness-journal-rdf-projection-service/client";
 import { ACTOR, executeA2aMessage, operationBytes, operationFromBytes } from "../src/a2a-executor.mjs";
 import { executeSoftwareMission } from "../src/client.mjs";
 
@@ -11,7 +11,7 @@ const mission = { id: "ni:///sha-256;AAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAA
 const request = { type: "SoftwareMissionExecutionRequest", provider: ACTOR, mission };
 
 function exact(body) {
-  return { id: semanticId(relationalRwilDocument(body)), ...body };
+  return { id: semanticId(relationalWitnessJournalDocument(body)), ...body };
 }
 
 test("the A2A executor carries one canonical RMN mission without a queue", async () => {

@@ -1,15 +1,15 @@
 import { fileURLToPath } from "node:url";
-import { createSettlementStore } from "@lenticule-science/rwil-rdf-projection-service/client";
+import { createSettlementStore } from "@lenticule-science/witness-journal-rdf-projection-service/client";
 import { runMission as defaultRunMission } from "./mission-runtime.mjs";
 
 export const MISSION_EXECUTION_ROOT = fileURLToPath(new URL("..", import.meta.url));
 export const DEFAULT_MISSION_EXECUTION_DATA_ROOT = fileURLToPath(new URL("../data", import.meta.url));
 export const ROUTE_OBSERVATION_CATEGORY = "software-mission-execution.route-observation";
 
-async function appendRouteObservation(record, { dataRoot, rwilAgentUrl, settlementCaip2, signal }) {
+async function appendRouteObservation(record, { dataRoot, witnessJournalAgentUrl, settlementCaip2, signal }) {
   const store = createSettlementStore({
     settlementRoot: MISSION_EXECUTION_ROOT,
-    agentUrl: rwilAgentUrl,
+    agentUrl: witnessJournalAgentUrl,
     caip2: settlementCaip2,
   });
   return store.record({ category: ROUTE_OBSERVATION_CATEGORY, recordedAt: record.finishedAt, record, signal });
@@ -20,14 +20,14 @@ export async function runMissionPipeline(mission, {
   recordRouteObservation = appendRouteObservation,
   signal,
   dataRoot = process.env.SOFTWARE_MISSION_EXECUTION_DATA_ROOT ?? DEFAULT_MISSION_EXECUTION_DATA_ROOT,
-  rwilAgentUrl = process.env.RWIL_RDF_AGENT,
+  witnessJournalAgentUrl = process.env.WITNESS_JOURNAL_RDF_AGENT,
   settlementCaip2 = process.env.SETTLEMENT_CAIP2,
 } = {}) {
   if (mission.maxTokens != null) throw new Error("mission maxTokens is retired; provider capacity and market consideration determine admissible output");
   const current = await runMission(mission, {
     signal,
     dataRoot,
-    rwilAgentUrl,
+    witnessJournalAgentUrl,
   });
   const phases = [{ kind: "enterprise-knowledge-pulse", result: current }];
 
@@ -55,7 +55,7 @@ export async function runMissionPipeline(mission, {
   };
   const routeRecord = await recordRouteObservation(observation, {
     dataRoot,
-    rwilAgentUrl,
+    witnessJournalAgentUrl,
     settlementCaip2,
     signal,
   });

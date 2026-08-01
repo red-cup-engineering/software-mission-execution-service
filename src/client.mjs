@@ -3,10 +3,10 @@ import { Message, Role } from "@a2a-js/sdk";
 import { a2aResultParts, resumeRmnTask, sendRmnTask, submitRmnTask } from "@red-cup-engineering/a2a-rmn-task-client-service";
 import { extractRmnPart, rmnPart } from "@red-cup-engineering/a2a-rmn-part-service";
 import { semanticId } from "@red-cup-engineering/rmn-semantic-conformance";
-import { relationalRwilDocument } from "@lenticule-science/rwil-rdf-projection-service/client";
+import { relationalWitnessJournalDocument } from "@lenticule-science/witness-journal-rdf-projection-service/client";
 import { ACTOR, operationBytes, operationFromBytes } from "./a2a-executor.mjs";
 
-function rmnId(value) { return semanticId(relationalRwilDocument(value)); }
+function rmnId(value) { return semanticId(relationalWitnessJournalDocument(value)); }
 function record(body) { return Object.freeze({ id: rmnId(body), ...body }); }
 function agentUrl(value) {
   const url = value ?? process.env.SOFTWARE_MISSION_EXECUTION_AGENT_CARD_URL;

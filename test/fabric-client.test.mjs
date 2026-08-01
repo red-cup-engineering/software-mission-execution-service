@@ -23,7 +23,7 @@ test("the customer hires one sovereign inference market and retains acceptance",
   assert.equal(fabricDefaults.market, "urn:ame:inference-work-lot-service");
   assert.equal(fabricDefaults.selectionOwner, "urn:ame:inference-work-lot-service");
   assert.equal(fabricDefaults.acceptanceOwner, fabricDefaults.customer);
-  assert.deepEqual(fabricDefaults.carrier, ["signed A2A 1.0 Agent Card", "canonical RMN/CBOR", "RWIL/RDF"]);
+  assert.deepEqual(fabricDefaults.carrier, ["signed A2A 1.0 Agent Card", "canonical RMN/CBOR", "witness-journal RDF"]);
 });
 
 test("one job becomes one context-complete public market request without provider selection", () => {
