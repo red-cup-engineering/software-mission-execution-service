@@ -1,8 +1,8 @@
 [Unit]
 Description=Bare Cedar Fog sovereign software mission execution A2A provider
-After=network-online.target rwil-rdf-projection-service.service bare-cedar-fog-rmn-semantic-conformance.service software-trajectory-memory-service.service
+After=network-online.target witness-journal-rdf-projection-service.service bare-cedar-fog-rmn-semantic-conformance.service software-trajectory-memory-service.service
 Wants=network-online.target
-Requires=rwil-rdf-projection-service.service bare-cedar-fog-rmn-semantic-conformance.service software-trajectory-memory-service.service
+Requires=witness-journal-rdf-projection-service.service bare-cedar-fog-rmn-semantic-conformance.service software-trajectory-memory-service.service
 
 [Service]
 Environment=INFERENCE_WORK_LOT_AGENT_CARD_URL=https://inference-work-lot-service-1019481907460.us-central1.run.app/.well-known/agent-card.json
@@ -10,7 +10,7 @@ Environment=SOFTWARE_TRAJECTORY_MEMORY_AGENT_CARD_URL=http://127.0.0.1:19843/.we
 Environment=SETTLEMENT_CAIP2=eip155:5615610
 Type=simple
 WorkingDirectory=/home/emsenn/info/lib/emsenn/services/561-group/services/red-cup-engineering/services/software-services-section/services/software-development-services-section/services/javascript-services-section/services/software-mission-execution-service
-Environment=RWIL_RDF_AGENT=http://127.0.0.1:19764/.well-known/agent-card.json
+Environment=WITNESS_JOURNAL_RDF_AGENT=http://127.0.0.1:19764/.well-known/agent-card.json
 Environment=RMN_CONFORMANCE_AGENT=http://127.0.0.1:8786/.well-known/agent-card.json
 Environment=AGENT_CARD_SIGNING_KEY=/home/emsenn/info/lib/emsenn/services/561-group/services/red-cup-engineering/services/software-services-section/services/software-development-services-section/services/javascript-services-section/services/software-mission-execution-service/data/agent-card-signing/ed25519-private.pem
 Environment=AGENT_CARD_JWKS=/home/emsenn/info/lib/emsenn/services/561-group/services/red-cup-engineering/services/software-services-section/services/software-development-services-section/services/javascript-services-section/services/software-mission-execution-service/content/agent-card-signing/jwks.json
