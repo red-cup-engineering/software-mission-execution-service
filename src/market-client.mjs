@@ -1,4 +1,4 @@
-import { inferenceBatchRequest, requestInferenceWorkBatch } from "@harmonious-union/inference-work-lot-service/client";
+import { inferenceBatchRequest, requestInferenceWorkBatch } from "@red-cup-engineering/inference-work-lot-service/client";
 
 const ACTOR = "urn:ame:software-mission-execution-service";
 const PROFILE = Object.freeze({ customer: ACTOR, purpose: "Produce the next software-mission transition; do not mutate customer territory or claim customer acceptance.", desiredUse: "Return one advisory transition for isolated execution against customer-declared verification and acceptance; observed residue informs subsequent market contacts.", workLotPrefix: "software-mission" });

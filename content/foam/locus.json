@@ -16,7 +16,7 @@
     },
     {
       "capability": "discover-and-hire-inference-provider",
-      "carrier": "@harmonious-union/inference-work-lot-service"
+      "carrier": "@red-cup-engineering/inference-work-lot-service"
     },
     {
       "capability": "retain-provider-and-trajectory-receipts",
