@@ -1,6 +1,6 @@
 {
   "name": "@red-cup-engineering/software-mission-execution-service",
-  "version": "1.0.0",
+  "version": "1.0.1",
   "private": true,
   "type": "module",
   "description": "Market-coordinated software mission cell over immutable source, durable trajectory memory, isolated tools, and customer induction.",
@@ -10,85 +10,35 @@
     "./executor": "./src/a2a-executor.mjs"
   },
   "bin": {
-    "execute-software-mission-a2a-message": "./bin/execute-a2a-message.mjs",
-    "serve-software-mission-a2a": "./bin/serve-a2a.mjs",
-    "serve-software-mission-x402": "./bin/x402-server.mjs"
+    "execute-software-mission-a2a-message": "./scripts/execute-a2a-message.mjs",
+    "serve-software-mission-a2a": "./scripts/serve-a2a.mjs",
+    "serve-software-mission-x402": "./scripts/x402-server.mjs"
   },
   "scripts": {
-    "check": "node --check src/client.mjs && node --check src/a2a-executor.mjs && node --check src/market-client.mjs && node --check src/activitypub-worker.mjs && node --check bin/execute-a2a-message.mjs && node --check bin/serve-activitypub-cloud-event.mjs && node --check bin/x402-server.mjs",
+    "check": "node --check src/client.mjs && node --check src/a2a-executor.mjs && node --check src/market-client.mjs && node --check src/activitypub-worker.mjs && node --check scripts/execute-a2a-message.mjs && node --check scripts/serve-activitypub-cloud-event.mjs && node --check scripts/x402-server.mjs",
     "test": "node --test",
     "verify": "npm run check && npm test"
   },
   "dependencies": {
     "@a2a-js/sdk": "1.0.0-beta.0",
-    "@red-cup-engineering/a2a-contracted-agent-service": "2.0.4",
-    "@red-cup-engineering/a2a-rmn-part-service": "1.0.0",
-    "@red-cup-engineering/a2a-rmn-task-client-service": "1.1.0",
-    "@red-cup-engineering/activitypub-services-section": "1.0.0",
+    "@red-cup-engineering/a2a-contracted-agent-service": "2.0.5",
+    "@red-cup-engineering/a2a-rmn-part-service": "1.0.1",
+    "@red-cup-engineering/a2a-rmn-task-client-service": "1.1.1",
+    "@red-cup-engineering/activitypub-services-section": "1.0.2",
     "@red-cup-engineering/coding-context-projection-service": "1.0.0",
     "@red-cup-engineering/github-services-section": "1.0.0",
-    "@harmonious-union/inference-work-lot-service": "4.0.0",
-    "@red-cup-engineering/protected-acceptance-service": "1.0.0",
-    "@red-cup-engineering/rmn-semantic-conformance": "6.0.0",
-    "@lenticule-science/rwil-rdf-projection-service": "1.0.2",
+    "@harmonious-union/inference-work-lot-service": "4.0.1",
+    "@red-cup-engineering/protected-acceptance-service": "1.0.1",
+    "@red-cup-engineering/rmn-semantic-conformance": "6.0.2",
+    "@lenticule-science/witness-journal-rdf-projection-service": "1.0.3",
     "@red-cup-engineering/sandbox-command-execution-service": "1.0.0",
     "@red-cup-engineering/software-edit-language-service": "1.0.0",
-    "@red-cup-engineering/software-trajectory-memory-service": "1.0.0",
-    "@red-cup-engineering/x402-services-section": "1.2.0",
-    "express": "5.1.0"
+    "@red-cup-engineering/software-trajectory-memory-service": "1.0.1",
+    "@red-cup-engineering/x402-services-section": "1.2.1",
+    "express": "5.1.0",
+    "@red-cup-engineering/software-mission-action-record-parser-service": "1.0.0"
   },
   "engines": {
     "node": ">=22"
-  },
-  "x-agentic-metro-enterprise": {
-    "node-id": "software-mission-execution-service",
-    "actor": "urn:ame:software-mission-execution-service",
-    "organizational-kind": "software-execution-provider",
-    "owners": [
-      "javascript-services-section"
-    ],
-    "admission": "one canonical RMN/CBOR SoftwareMissionExecutionRequest received through the hired A2A 1.0 provider",
-    "refusal": "unbounded territory or tools, incomplete acceptance evidence, provider self-attestation, customer-border overwrite, noncanonical identity, or direct JSON/local-process customer invocation",
-    "operation-catalog": {
-      "execute-software-mission": {
-        "contract": "content/contracts/software-mission-execution.rml",
-        "protocols": [
-          "RMN",
-          "A2A 1.0",
-          "RWIL/RDF"
-        ],
-        "returns": "SoftwareMissionExecutionResult|SoftwareMissionExecutionRefusal",
-        "legacyCompatibility": false
-      }
-    },
-    "x-foam-locus": {
-      "address": [
-        "software",
-        "development",
-        "mission",
-        "execution"
-      ],
-      "proposition": "There exists a market-coordinated Actor which advances one durable software mission through context projection, provider procurement, receipt-bearing execution, protected verification, and resumable A2A custody.",
-      "actor": "urn:ame:software-mission-execution-service",
-      "projection": "content/foam/locus.json"
-    }
-  },
-  "x-semiotic-voxel": {
-    "profile": "org.harmonious-union.semiotic-voxel.v1",
-    "owner": "javascript-services-section",
-    "kind": "capability-cell",
-    "actor": "urn:ame:software-mission-execution-service",
-    "operations": [
-      "execute-software-mission"
-    ],
-    "capabilities": [
-      {
-        "capability": "software-mission-execution-service",
-        "faces": [
-          "execute-software-mission"
-        ]
-      }
-    ],
-    "package": "@red-cup-engineering/software-mission-execution-service"
   }
 }
