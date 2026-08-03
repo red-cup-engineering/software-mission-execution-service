@@ -5,8 +5,8 @@ import { tmpdir } from "node:os";
 import test from "node:test";
 import { processNodePrompt, runMission as runMissionProvider, softwareEditActionSchema } from "../src/mission-runtime.mjs";
 import { createAgentTools } from "../src/agent-tools.mjs";
-import { inducedTrajectoryResolver, missionMemoryContext, promotionReadout, recallTrajectories } from "../../software-trajectory-memory-service/src/memory.mjs";
-import { prepareAcceptanceCapsule } from "../../protected-acceptance-service/src/acceptance-capsule.mjs";
+import { inducedTrajectoryResolver, missionMemoryContext, promotionReadout, recallTrajectories } from "@red-cup-engineering/software-trajectory-memory-service/memory";
+import { prepareAcceptanceCapsule } from "@red-cup-engineering/protected-acceptance-service/acceptance-capsule";
 
 function networkFixture() {
   const objects = new Map(), memberships = new Map();
@@ -75,7 +75,7 @@ async function protectedAdditionCapsule(territory) {
     testVectors: [{ id: "addition-vector", given: ["two and three"], when: "add is invoked", then: ["five is returned"], forbidden: ["subtraction"] }],
     artifacts: [{ path: "union-acceptance/addition.test.mjs", text: 'import test from "node:test";\nimport assert from "node:assert/strict";\nimport { add } from "../calc.mjs";\ntest("addition-vector", () => assert.equal(add(2, 3), 5));\n' }],
   }, {
-    assayOracle: async () => ({ accepted: true, failures: [] }),
+    assayOracle: async () => ({ charge: { support: true, refutation: false }, failures: [] }),
     reviewOracle: async () => ({ accepted: true, reviews: [{ endpoint: "independent-acceptance-reviewer" }] }),
   });
   const path = join(territory, "protected-addition-capsule.json");

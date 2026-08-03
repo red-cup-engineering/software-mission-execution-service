@@ -8,7 +8,7 @@ import { dispatchBatch as defaultDispatch } from "./market-client.mjs";
 import { runTestsCommand } from "@red-cup-engineering/sandbox-command-execution-service";
 import { appendSoftwareMissionCheckpoint, appendSoftwareTrajectory, readSoftwareMissionCheckpoint, readSoftwareMissionMemoryContext, readSoftwareTrajectoryPromotion, recallSoftwareTrajectories, resolveInducedSoftwareTrajectory, trajectoryFingerprint, trajectoryRecipeFingerprint } from "@red-cup-engineering/software-trajectory-memory-service/client";
 import { buildCodingContextPacket } from "@red-cup-engineering/coding-context-projection-service";
-import { resolutionCreditPolicy, validateConsiderationPolicy } from "@red-cup-engineering/inference-work-lot-service/consideration";
+import { resolutionCreditPolicy, validateConsiderationPolicy } from "./consideration.mjs";
 import { executeAcceptanceCapsule, loadAcceptanceCapsule, materializeAcceptanceCapsule, validateAcceptanceCapsule } from "@red-cup-engineering/protected-acceptance-service/client";
 import { githubApi } from "@red-cup-engineering/github-services-section";
 import { actionBlocks, parseSoftwareMissionActionRecord } from "@red-cup-engineering/software-mission-action-record-parser-service/src/action-record-parser.mjs";

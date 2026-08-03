@@ -1,19 +1,11 @@
-import { randomUUID } from "node:crypto";
-import { Message, Role } from "@a2a-js/sdk";
-import { a2aResultParts, resumeRmnTask, sendRmnTask, submitRmnTask } from "@red-cup-engineering/a2a-rmn-task-client-service";
-import { extractRmnPart, rmnPart } from "@red-cup-engineering/a2a-rmn-part-service";
-import { semanticId } from "@red-cup-engineering/rmn-semantic-conformance";
-import { relationalWitnessJournalDocument } from "@lenticule-science/witness-journal-rdf-projection-service/client";
-import { ACTOR, operationBytes, operationFromBytes } from "./a2a-executor.mjs";
+import { runMissionPipeline } from "./mission-pipeline.mjs";
+import { identifyOperation } from "./semantic-content.mjs";
 
-function rmnId(value) { return semanticId(relationalWitnessJournalDocument(value)); }
-function record(body) { return Object.freeze({ id: rmnId(body), ...body }); }
-function agentUrl(value) {
-  const url = value ?? process.env.SOFTWARE_MISSION_EXECUTION_AGENT_CARD_URL;
-  if (typeof url !== "string" || !url) throw new Error("SOFTWARE_MISSION_EXECUTION_AGENT_CARD_URL is required");
-  return url;
+export const ACTOR = "urn:ame:software-mission-execution-service";
+
+function record(body) {
+  return Object.freeze({ id: identifyOperation(body).id, ...body });
 }
-const responseParts = a2aResultParts;
 
 function missionRequest(mission, invocation) {
   return record({
@@ -24,74 +16,27 @@ function missionRequest(mission, invocation) {
   });
 }
 
-function requestMessage(request) {
-  return Message.toJSON({
-    messageId: randomUUID(), contextId: "", taskId: "", role: Role.ROLE_USER,
-    parts: [rmnPart(operationBytes(request))], metadata: {}, extensions: [], referenceTaskIds: [],
-  });
-}
-
-export async function submitSoftwareMission(mission, {
-  agentCardUrl,
-  submit = submitRmnTask,
-  onTaskObservation,
-  signal,
-  callbackUrl,
-  callbackToken,
-  invocation,
-} = {}) {
-  const request = missionRequest(mission, invocation);
-  const submission = await submit({
-    agentUrl: agentUrl(agentCardUrl),
-    message: requestMessage(request),
-    requireSignature: true,
-    returnImmediately: true,
-    onTaskObservation,
-    signal,
-    callbackUrl,
-    callbackToken,
-  });
-  return Object.freeze({
-    type: "SoftwareMissionSubmission",
+export async function proposeSoftwareMission(mission, options = {}) {
+  if (!mission || typeof mission !== "object" || typeof mission.id !== "string" || mission.id === "") {
+    throw new TypeError("software mission requires one identified mission value");
+  }
+  const request = missionRequest(mission, options.invocation);
+  const executable = typeof options.invocation === "string" && options.invocation !== ""
+    ? { ...mission, causalInvocation: options.invocation }
+    : mission;
+  const result = await (options.runMissionPipeline ?? runMissionPipeline)(executable, options.execution ?? options);
+  const response = record({
+    type: "SoftwareMissionExecutionResult",
+    provider: ACTOR,
     request: request.id,
     mission: mission.id,
-    taskId: submission.taskId,
-    task: submission.task,
-    agentCard: submission.agentCard,
-    authentication: submission.authentication,
+    result,
   });
-}
-
-export async function invokeSoftwareMissionOperation(request, { agentCardUrl, send = sendRmnTask, resume = resumeRmnTask, resumeTaskId, onTaskObservation, signal } = {}) {
-  const message = requestMessage(request);
-  const address = agentUrl(agentCardUrl);
-  const transport = resumeTaskId
-    ? await resume({ agentUrl: address, taskId: resumeTaskId, inputNi: request.id, requireSignature: true, onTaskObservation, signal })
-    : await send({ agentUrl: address, message, requireSignature: true, onTaskObservation, signal });
-  const output = extractRmnPart(responseParts(transport.result));
-  const response = operationFromBytes(output.bytes);
-  if (response?.provider !== ACTOR || response.request !== request.id || typeof response.id !== "string") throw new Error("software mission provider returned a foreign operation result");
-  return Object.freeze({ response, transport: { inputNi: transport.inputNi, outputNi: transport.outputNi, agentCard: transport.agentCard, authentication: { agentCardSignatureVerified: true, required: true } } });
-}
-
-/** Hire the supplier and return its signed proposal without granting the
- * supplier mutation authority over customer material. */
-export async function proposeSoftwareMission(mission, options = {}) {
-  const request = missionRequest(mission, options.invocation);
-  const { response, transport } = await invokeSoftwareMissionOperation(request, options);
-  if (response.type !== "SoftwareMissionExecutionResult" || response.mission !== mission.id) {
-    throw new Error("software mission provider returned the wrong result type or mission");
-  }
   return Object.freeze({
-    ...response.result,
+    ...result,
     executionProvider: ACTOR,
-    executionReceipt: transport,
+    executionReceipt: Object.freeze({ input: request.id, output: response.id }),
   });
 }
 
-export async function executeSoftwareMission(mission, options = {}) {
-  // A hired executor may only return a verified, proposal-only morphism.  The
-  // JS Mark admission boundary owns any later host mutation; keeping this
-  // compatibility name avoids granting a client implicit mutation authority.
-  return proposeSoftwareMission(mission, options);
-}
+export const executeSoftwareMission = proposeSoftwareMission;

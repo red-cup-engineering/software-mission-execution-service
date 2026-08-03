@@ -1,18 +1,24 @@
 import { fileURLToPath } from "node:url";
-import { createSettlementStore } from "@lenticule-science/witness-journal-rdf-projection-service/client";
+import { createSemanticRecordJournal } from "@red-cup-engineering/semantic-record-journal-service";
 import { runMission as defaultRunMission } from "./mission-runtime.mjs";
 
 export const MISSION_EXECUTION_ROOT = fileURLToPath(new URL("..", import.meta.url));
 export const DEFAULT_MISSION_EXECUTION_DATA_ROOT = fileURLToPath(new URL("../data", import.meta.url));
 export const ROUTE_OBSERVATION_CATEGORY = "software-mission-execution.route-observation";
 
-async function appendRouteObservation(record, { dataRoot, witnessJournalAgentUrl, settlementCaip2, signal }) {
-  const store = createSettlementStore({
-    settlementRoot: MISSION_EXECUTION_ROOT,
-    agentUrl: witnessJournalAgentUrl,
-    caip2: settlementCaip2,
+async function appendRouteObservation(record, { dataRoot }) {
+  const successful = record.finalVerified || record.finalAnswered;
+  const receipt = createSemanticRecordJournal({
+    root: dataRoot,
+    objectKind: "software-mission-execution.route-observation",
+  }).record({
+    category: ROUTE_OBSERVATION_CATEGORY,
+    recordedAt: record.finishedAt,
+    record,
+    charge: { support: successful, refutation: !successful },
+    relation: { subject: record.id, predicate: "routes", object: record.continuation },
   });
-  return store.record({ category: ROUTE_OBSERVATION_CATEGORY, recordedAt: record.finishedAt, record, signal });
+  return Object.freeze({ ...receipt, documentNi: receipt.id, reference: null });
 }
 
 export async function runMissionPipeline(mission, {
@@ -20,14 +26,11 @@ export async function runMissionPipeline(mission, {
   recordRouteObservation = appendRouteObservation,
   signal,
   dataRoot = process.env.SOFTWARE_MISSION_EXECUTION_DATA_ROOT ?? DEFAULT_MISSION_EXECUTION_DATA_ROOT,
-  witnessJournalAgentUrl = process.env.WITNESS_JOURNAL_RDF_AGENT,
-  settlementCaip2 = process.env.SETTLEMENT_CAIP2,
 } = {}) {
   if (mission.maxTokens != null) throw new Error("mission maxTokens is retired; provider capacity and market consideration determine admissible output");
   const current = await runMission(mission, {
     signal,
     dataRoot,
-    witnessJournalAgentUrl,
   });
   const phases = [{ kind: "enterprise-knowledge-pulse", result: current }];
 
@@ -55,9 +58,6 @@ export async function runMissionPipeline(mission, {
   };
   const routeRecord = await recordRouteObservation(observation, {
     dataRoot,
-    witnessJournalAgentUrl,
-    settlementCaip2,
-    signal,
   });
   return { ...current, phases, route: { ...observation, networkReference: routeRecord.reference, semanticId: routeRecord.documentNi } };
 }
