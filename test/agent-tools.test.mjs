@@ -1,5 +1,5 @@
 import assert from "node:assert/strict";
-import { mkdtempSync, readFileSync, writeFileSync } from "node:fs";
+import { mkdirSync, mkdtempSync, readFileSync, rmSync, symlinkSync, writeFileSync } from "node:fs";
 import { join } from "node:path";
 import { tmpdir } from "node:os";
 import test from "node:test";
@@ -51,4 +51,23 @@ test("create delegates the absent exact writable target to the edit-language pro
   assert.match(duplicate.error, /target absent/);
   const escaped = JSON.parse(tools.execute({ action: "create", args: { path: "../escape.mjs", content: "x" } }));
   assert.equal(escaped.ok, false);
+});
+
+test("fabrication tools refuse symlinked reads, edits, creations, and checkpoint restores", (t) => {
+  const parent = mkdtempSync(join(tmpdir(), "union-admitted-symlink-boundary-"));
+  t.after(() => rmSync(parent, { recursive: true, force: true }));
+  const root = join(parent, "territory"), outside = join(parent, "other-owner");
+  mkdirSync(join(root, "public"), { recursive: true });
+  mkdirSync(outside);
+  writeFileSync(join(outside, "secret.mjs"), "export const protectedValue = 1;\\n");
+  symlinkSync(join(outside, "secret.mjs"), join(root, "public", "leak.mjs"));
+  symlinkSync(outside, join(root, "public", "through"));
+  const tools = createAgentTools({ root, verifyCommand: "true", readablePaths: ["public"], writablePaths: ["public"] });
+  assert.throws(() => tools.execute({ action: "read", args: { path: "public/leak.mjs" } }), /symbolic link/u);
+  assert.throws(() => tools.execute({ action: "edit", args: { path: "public/leak.mjs",
+    blocks: { search: "protectedValue = 1", replace: "protectedValue = 2" } } }), /symbolic link/u);
+  assert.throws(() => tools.execute({ action: "create", args: { path: "public/through/new.mjs",
+    content: "export const escaped = true;\\n" } }), /symbolic link/u);
+  assert.throws(() => tools.restoreChanges([{ path: "public/leak.mjs" }]), /symbolic link/u);
+  assert.equal(readFileSync(join(outside, "secret.mjs"), "utf8"), "export const protectedValue = 1;\\n");
 });
