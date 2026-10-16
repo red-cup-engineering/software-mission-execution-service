@@ -10,6 +10,7 @@
   },
   "files": [
     "src/agent-tools.mjs",
+    "src/territory-path.mjs",
     "src/client.mjs",
     "src/consideration.mjs",
     "src/market-client.mjs",
@@ -18,8 +19,8 @@
     "src/semantic-content.mjs"
   ],
   "scripts": {
-    "check": "node --check src/client.mjs && node --check src/agent-tools.mjs && node --check src/consideration.mjs && node --check src/market-client.mjs && node --check src/mission-pipeline.mjs && node --check src/mission-runtime.mjs && node --check src/semantic-content.mjs",
-    "test": "node --test test/mission-pipeline.test.mjs",
+    "check": "node --check src/client.mjs && node --check src/agent-tools.mjs && node --check src/consideration.mjs && node --check src/market-client.mjs && node --check src/mission-pipeline.mjs && node --check src/mission-runtime.mjs && node --check src/semantic-content.mjs && node --check src/territory-path.mjs && node --check test/territory-path.test.mjs && node --check test/agent-tools.test.mjs",
+    "test": "node --test test/mission-pipeline.test.mjs test/agent-tools.test.mjs test/territory-path.test.mjs",
     "verify": "npm run check && npm test"
   },
   "dependencies": {
