@@ -59,7 +59,7 @@ test("fabrication tools refuse symlinked reads, edits, creations, and checkpoint
   const root = join(parent, "territory"), outside = join(parent, "other-owner");
   mkdirSync(join(root, "public"), { recursive: true });
   mkdirSync(outside);
-  writeFileSync(join(outside, "secret.mjs"), "export const protectedValue = 1;\\n");
+  writeFileSync(join(outside, "secret.mjs"), "export const protectedValue = 1;\n");
   symlinkSync(join(outside, "secret.mjs"), join(root, "public", "leak.mjs"));
   symlinkSync(outside, join(root, "public", "through"));
   const tools = createAgentTools({ root, verifyCommand: "true", readablePaths: ["public"], writablePaths: ["public"] });
@@ -67,7 +67,7 @@ test("fabrication tools refuse symlinked reads, edits, creations, and checkpoint
   assert.throws(() => tools.execute({ action: "edit", args: { path: "public/leak.mjs",
     blocks: { search: "protectedValue = 1", replace: "protectedValue = 2" } } }), /symbolic link/u);
   assert.throws(() => tools.execute({ action: "create", args: { path: "public/through/new.mjs",
-    content: "export const escaped = true;\\n" } }), /symbolic link/u);
+    content: "export const escaped = true;\n" } }), /symbolic link/u);
   assert.throws(() => tools.restoreChanges([{ path: "public/leak.mjs" }]), /symbolic link/u);
-  assert.equal(readFileSync(join(outside, "secret.mjs"), "utf8"), "export const protectedValue = 1;\\n");
+  assert.equal(readFileSync(join(outside, "secret.mjs"), "utf8"), "export const protectedValue = 1;\n");
 });
