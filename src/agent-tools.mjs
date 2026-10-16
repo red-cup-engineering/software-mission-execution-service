@@ -4,14 +4,11 @@ import { dirname, relative, resolve, sep } from "node:path";
 import { mkdirSync } from "node:fs";
 import { applyEditBlocks, prepareCreateArtifact } from "@red-cup-engineering/software-edit-language-service";
 import { runTestsCommand } from "@red-cup-engineering/sandbox-command-execution-service";
+import { insideTerritory as inside } from "./territory-path.mjs";
 
 const SKIP = new Set([".git", "node_modules", ".lake", "dist", "coverage"]);
 
-function inside(root, requested = ".") {
-  const path = resolve(root, requested);
-  if (path !== resolve(root) && !path.startsWith(resolve(root) + sep)) throw new Error("path escapes the admitted territory");
-  return path;
-}
+
 
 function walk(root, at = root, out = []) {
   if (!existsSync(at)) return out;
@@ -144,14 +141,19 @@ export function createAgentTools({ root, verifyCommand, acceptanceCommand = veri
         return observe({ ok: true, editBlocks: result.count, verification: checkObservation(verification), acceptance: checkObservation(acceptance) });
       }
       if (action.action === "create") {
+        // Both the requested and provider-returned paths must stay within the
+        // same ordinary-file territory; an admitted writable lane is not a
+        // capability to follow symlinks into another owner.
+        inside(root, args.path);
         const prepared = prepareCreateArtifact({ workspace: root, path: args.path, content: args.content, writablePaths });
         if (!prepared.ok) return observe({ ok: false, terminal: true, error: prepared.reason });
-        const relativePath = relative(root, prepared.path);
-        mkdirSync(dirname(prepared.path), { recursive: true });
-        writeFileSync(prepared.path, prepared.content);
+        const receivedPath = inside(root, prepared.path);
+        const relativePath = relative(root, receivedPath);
+        mkdirSync(dirname(receivedPath), { recursive: true });
+        writeFileSync(receivedPath, prepared.content);
         const { verification, acceptance } = checks();
         if (settledChecks.verification.passed && !verification.passed) {
-          unlinkSync(prepared.path);
+          unlinkSync(receivedPath);
           return observe({
             ok: false,
             rolledBack: true,
