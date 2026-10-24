@@ -5,7 +5,7 @@ import { join, relative, resolve, sep } from "node:path";
 import { tmpdir } from "node:os";
 import { createAgentTools, territorySnapshot } from "./agent-tools.mjs";
 import { dispatchBatch as defaultDispatch } from "./market-client.mjs";
-import { runTestsCommand } from "@red-cup-engineering/sandbox-command-execution-service";
+import { admitCommandLimits, runTestsCommand } from "@red-cup-engineering/sandbox-command-execution-service";
 import { appendSoftwareMissionCheckpoint, appendSoftwareTrajectory, readSoftwareMissionCheckpoint, readSoftwareMissionMemoryContext, readSoftwareTrajectoryPromotion, recallSoftwareTrajectories, resolveInducedSoftwareTrajectory, trajectoryFingerprint, trajectoryRecipeFingerprint } from "@red-cup-engineering/software-trajectory-memory-service/client";
 import { buildCodingContextPacket } from "@red-cup-engineering/coding-context-projection-service";
 import { resolutionCreditPolicy, validateConsiderationPolicy } from "./consideration.mjs";
@@ -409,7 +409,7 @@ function normalizeTestVectors(input) {
 function replayInducedTrajectory(manifest, resolver, acceptanceCapsule) {
   const isolated = copyTerritory(manifest.territory);
   if (acceptanceCapsule) materializeAcceptanceCapsule(isolated.workspace, acceptanceCapsule);
-  const tools = createAgentTools({ root: isolated.workspace, verifyCommand: manifest.verifyCommand, acceptanceCommand: manifest.acceptanceCommand, commands: manifest.commands, writablePaths: manifest.writablePaths, readablePaths: manifest.readablePaths });
+  const tools = createAgentTools({ root: isolated.workspace, verifyCommand: manifest.verifyCommand, acceptanceCommand: manifest.acceptanceCommand, commands: manifest.commands, writablePaths: manifest.writablePaths, readablePaths: manifest.readablePaths, commandLimits: manifest.commandLimits });
   const observations = [];
   for (const action of resolver.actions) {
     const editError = validateCurrentAction(action, { workspace: isolated.workspace }, manifest.writablePaths);
@@ -472,6 +472,11 @@ async function runMaterializedMission(input, {
     : input.acceptanceCapsulePath ? loadAcceptanceCapsule(input.acceptanceCapsulePath, { territory }) : null;
   if (acceptanceCapsule && input.acceptanceCommand && input.acceptanceCommand !== acceptanceCapsule.command) throw new Error("mission acceptance command conflicts with protected acceptance capsule");
   if (acceptanceCapsule && Array.isArray(input.testVectors) && JSON.stringify(normalizeTestVectors(input.testVectors)) !== JSON.stringify(acceptanceCapsule.testVectors)) throw new Error("mission test vectors conflict with protected acceptance capsule");
+  // Source-owned command budgets bind to the actual Work identity. An old
+  // pinned command supplier without this admission cannot claim that it ran
+  // independently qualified, resource-bounded customer verification.
+  const commandLimits = input.commandLimits === undefined
+    ? undefined : admitCommandLimits(input.commandLimits);
   const manifest = {
     id: input.id || stableIdentity("mission", {
       source: input.sourceDescriptor ?? { kind: "local-territory", path: territory },
@@ -480,6 +485,7 @@ async function runMaterializedMission(input, {
       writablePaths: [...writablePaths].sort(),
       verifyCommand: input.verifyCommand,
       acceptanceCommand: acceptanceCapsule?.command || input.acceptanceCommand || input.verifyCommand,
+      ...(commandLimits === undefined ? {} : { commandLimits }),
     }),
     objective: input.objective,
     taskClass: input.taskClass || null,
@@ -503,6 +509,7 @@ async function runMaterializedMission(input, {
     territory,
     verifyCommand: input.verifyCommand,
     acceptanceCommand: acceptanceCapsule?.command || input.acceptanceCommand || input.verifyCommand,
+    ...(commandLimits === undefined ? {} : { commandLimits }),
     commands: input.commands || {},
     constraints: input.constraints || [],
     testVectors: acceptanceCapsule?.testVectors || normalizeTestVectors(input.testVectors),
@@ -523,11 +530,11 @@ async function runMaterializedMission(input, {
   }
   const startedAt = new Date().toISOString(), snapshot = territorySnapshot(manifest.territory);
   const baselineVerification = manifest.verifyCommand
-    ? runTestsCommand(manifest.territory, manifest.verifyCommand)
+    ? runTestsCommand(manifest.territory, manifest.verifyCommand, commandLimits)
     : { passed: true, output: "not-applicable: inquiry has no mutation acceptance command" };
   const baselineAcceptance = acceptanceCapsule
     ? executeAcceptanceCapsule(manifest.territory, acceptanceCapsule, { requireSourceEvidence: true })
-    : !manifest.acceptanceCommand || manifest.acceptanceCommand === manifest.verifyCommand ? baselineVerification : runTestsCommand(manifest.territory, manifest.acceptanceCommand);
+    : !manifest.acceptanceCommand || manifest.acceptanceCommand === manifest.verifyCommand ? baselineVerification : runTestsCommand(manifest.territory, manifest.acceptanceCommand, commandLimits);
   const memoryOptions = {
     dataRoot,
     witnessJournalAgentUrl,
@@ -567,7 +574,7 @@ async function runMaterializedMission(input, {
   const processNode = replay?.status === "verified" ? replay : (() => {
     const isolated = copyTerritory(manifest.territory);
     if (acceptanceCapsule) materializeAcceptanceCapsule(isolated.workspace, acceptanceCapsule);
-    const tools = createAgentTools({ root: isolated.workspace, verifyCommand: manifest.verifyCommand, acceptanceCommand: manifest.acceptanceCommand, commands: manifest.commands, writablePaths: manifest.writablePaths, readablePaths: manifest.readablePaths });
+    const tools = createAgentTools({ root: isolated.workspace, verifyCommand: manifest.verifyCommand, acceptanceCommand: manifest.acceptanceCommand, commands: manifest.commands, writablePaths: manifest.writablePaths, readablePaths: manifest.readablePaths, commandLimits: manifest.commandLimits });
     if (priorCheckpoint) tools.restoreChanges(priorCheckpoint.changes);
     return {
       id: "process-node",
