@@ -75,7 +75,7 @@ test("fabrication tools refuse symlinked reads, edits, creations, and checkpoint
 test("an admitted mission Work command carries source CPU-time proxy and bounded failure reason to its original receiver", (t) => {
   const root=mkdtempSync(join(tmpdir(),"union-mission-receiving-deadline-"));
   t.after(()=>rmSync(root,{recursive:true,force:true}));
-  writeFileSync(join(root,"slow.mjs"),"setTimeout(()=>{},30000);\\n");
+  writeFileSync(join(root,"slow.mjs"),"setTimeout(()=>{},30000);\n");
   const tools=createAgentTools({
     root,verifyCommand:"node --check slow.mjs",
     commandLimits:{timeoutMs:60,maxOutputBytes:1024},
@@ -96,7 +96,7 @@ test("verification evidence does not erase output exhaustion or mislabel a faile
   const root=mkdtempSync(join(tmpdir(),"union-mission-receiving-output-"));
   t.after(()=>rmSync(root,{recursive:true,force:true}));
   writeFileSync(join(root,"noisy.mjs"),
-    'process.stdout.write("Q".repeat(100000));\\n');
+    'process.stdout.write("Q".repeat(100000));\n');
   const tools=createAgentTools({
     root,verifyCommand:"node --check noisy.mjs",
     commandLimits:{timeoutMs:10000,maxOutputBytes:1024},
