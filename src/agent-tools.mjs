@@ -45,6 +45,8 @@ export function createAgentTools({ root, verifyCommand, acceptanceCommand = veri
     failureKind: typeof result.failureKind === "string" ? result.failureKind
       : result.passed ? null : "unclassified",
     observedWallMs: Number.isSafeInteger(result.observedWallMs) ? result.observedWallMs : null,
+    processGroupCleanup: typeof result.processGroupCleanup === "string"
+      ? result.processGroupCleanup : "unknown",
     limits: result.limits ?? null,
   });
   const checks = () => {
