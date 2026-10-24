@@ -71,3 +71,46 @@ test("fabrication tools refuse symlinked reads, edits, creations, and checkpoint
   assert.throws(() => tools.restoreChanges([{ path: "public/leak.mjs" }]), /symbolic link/u);
   assert.equal(readFileSync(join(outside, "secret.mjs"), "utf8"), "export const protectedValue = 1;\n");
 });
+
+test("an admitted mission Work command carries source CPU-time proxy and bounded failure reason to its original receiver", (t) => {
+  const root=mkdtempSync(join(tmpdir(),"union-mission-receiving-deadline-"));
+  t.after(()=>rmSync(root,{recursive:true,force:true}));
+  writeFileSync(join(root,"slow.mjs"),"setTimeout(()=>{},30000);\\n");
+  const tools=createAgentTools({
+    root,verifyCommand:"node --check slow.mjs",
+    commandLimits:{timeoutMs:60,maxOutputBytes:1024},
+    commands:{hanging:{command:"node slow.mjs"}},
+  });
+  const received=JSON.parse(tools.execute({action:"command",args:{name:"hanging"}}));
+  assert.equal(received.command,"hanging");
+  assert.equal(received.passed,false);
+  assert.equal(received.failureKind,"deadline");
+  assert.ok(Number.isSafeInteger(received.observedWallMs)&&received.observedWallMs>=0);
+  assert.equal(received.limits.timeoutMs,60);
+  assert.equal(received.limits.maxOutputBytes,1024);
+  assert.match(received.output,/ETIMEDOUT/u);
+  // This is measured host wall time, NOT billed CPU seconds or accepted Work.
+});
+
+test("verification evidence does not erase output exhaustion or mislabel a failed job as accepted", (t) => {
+  const root=mkdtempSync(join(tmpdir(),"union-mission-receiving-output-"));
+  t.after(()=>rmSync(root,{recursive:true,force:true}));
+  writeFileSync(join(root,"noisy.mjs"),
+    'process.stdout.write("Q".repeat(100000));\\n');
+  const tools=createAgentTools({
+    root,verifyCommand:"node --check noisy.mjs",
+    commandLimits:{timeoutMs:10000,maxOutputBytes:1024},
+    commands:{noisy:{command:"node noisy.mjs"}},
+  });
+  const readout=JSON.parse(tools.execute({action:"command",args:{name:"noisy"}}));
+  assert.equal(readout.passed,false);
+  assert.equal(readout.failureKind,"output-limit");
+  assert.equal(readout.limits.maxOutputBytes,1024);
+  assert.match(readout.output,/ENOBUFS/u);
+  assert.ok(readout.output.length < 1600);
+  const verified=JSON.parse(tools.execute({action:"test",args:{}}));
+  assert.equal(verified.verification.passed,true);
+  assert.equal(verified.verification.failureKind,null);
+  assert.ok(Number.isSafeInteger(verified.verification.observedWallMs));
+  assert.equal(verified.verification.limits.maxOutputBytes,1024);
+});
