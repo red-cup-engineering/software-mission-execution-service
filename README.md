@@ -15,8 +15,9 @@ The original mission engine uses one
 [`@red-cup-engineering/sandbox-command-execution-service`](https://github.com/red-cup-engineering/sandbox-command-execution-service)
 at source verification, post-edit checks, acceptance and named commands. The
 upstream [bounded execution PR #1](https://github.com/red-cup-engineering/sandbox-command-execution-service/pull/1)
-repairs actual infinite output/no deadline and wrong-cwd authority, and
-receives 15/15 tests on real native Node 22 with exact source Git hashes.
+repairs actual infinite output/no deadline, wrong-cwd authority, and
+POSIX orphaned children of timed-out workers, and receives 16/16 tests on
+real native Node 22 with exact source Git hashes.
 This mission source change **does not duplicate or replace that supplier**.
 
 A Work principal may now supply optional
@@ -32,8 +33,10 @@ cannot be displaced by `opts.cwd`.
 
 The existing actor `checkObservation` and named-command readouts retain
 `failureKind` (deadline/output-limit/spawn/signaled/cancelled/nonzero-exit
-or unknown for an old/incomplete readout), measured `observedWallMs`, and
-the effective numeric `limits` alongside `passed` and `output`.
+or unknown for an old/incomplete readout), measured `observedWallMs`,
+`processGroupCleanup` (the actual POSIX cleanup-signal attempt, otherwise
+unknown for an old provider), and the effective numeric `limits` alongside
+`passed` and `output`.
 A passing syntax/test command remains merely verification of one process
 attempt. A monetary claim requires **separate** admitted execution
 capacity, original buyer rights/Work, output hashes, independent receiving,
