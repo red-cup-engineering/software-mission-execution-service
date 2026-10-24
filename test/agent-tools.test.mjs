@@ -88,6 +88,11 @@ test("an admitted mission Work command carries source CPU-time proxy and bounded
   assert.ok(Number.isSafeInteger(received.observedWallMs)&&received.observedWallMs>=0);
   assert.equal(received.limits.timeoutMs,60);
   assert.equal(received.limits.maxOutputBytes,1024);
+  if (process.platform === "win32") {
+    assert.equal(received.processGroupCleanup,"not-supported");
+  } else {
+    assert.ok(["group-signal-sent","group-already-exited"].includes(received.processGroupCleanup));
+  }
   assert.match(received.output,/ETIMEDOUT/u);
   // This is measured host wall time, NOT billed CPU seconds or accepted Work.
 });
@@ -106,6 +111,9 @@ test("verification evidence does not erase output exhaustion or mislabel a faile
   assert.equal(readout.passed,false);
   assert.equal(readout.failureKind,"output-limit");
   assert.equal(readout.limits.maxOutputBytes,1024);
+  if (process.platform !== "win32") {
+    assert.ok(["group-signal-sent","group-already-exited"].includes(readout.processGroupCleanup));
+  }
   assert.match(readout.output,/ENOBUFS/u);
   assert.ok(readout.output.length < 1600);
   const verified=JSON.parse(tools.execute({action:"test",args:{}}));
@@ -113,4 +121,5 @@ test("verification evidence does not erase output exhaustion or mislabel a faile
   assert.equal(verified.verification.failureKind,null);
   assert.ok(Number.isSafeInteger(verified.verification.observedWallMs));
   assert.equal(verified.verification.limits.maxOutputBytes,1024);
+  assert.equal(verified.verification.processGroupCleanup,"not-required");
 });
