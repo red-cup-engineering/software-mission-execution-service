@@ -4,7 +4,6 @@
  * RMN execution receipt identity and SEN journal content identity stay distinct.
  */
 import { createSemanticRecordJournal } from '@red-cup-engineering/semantic-record-journal-service';
-import { isProxy } from 'node:util/types';
 import { identifyOperation } from './semantic-content.mjs';
 import { ACTOR } from './actor.mjs';
 
@@ -15,61 +14,6 @@ const isName = x => typeof x === 'string' && x.length > 0 && x.length <= 4096
   && x.isWellFormed() && !/[\u0000-\u001f\u007f-\u009f]/u.test(x);
 const isNi = x => typeof x === 'string' && /^ni:\/\/\/sha-256;[A-Za-z0-9_-]{43}$/u.test(x);
 const failure = reason => { throw new TypeError('original software result custody: '+reason); };
-/** Snapshot finite, own JSON values without invoking user-supplied behavior.
- * JSON.stringify(originalResult) would execute getters or toJSON hooks.
- * Shared references have JSON value semantics; cycles and executable values refuse.
- */
-function strictOriginalResultSnapshot(value) {
-  let nodes = 0;
-  const active = new WeakSet();
-  const copy = (item, depth) => {
-    if (++nodes > 32768 || depth > 64)
-      failure('source result exceeds admitted custody structure');
-    if (item === null || typeof item === 'boolean') return item;
-    if (typeof item === 'string') {
-      if (!item.isWellFormed()) failure('nonserializable source result');
-      return item;
-    }
-    if (typeof item === 'number' && Number.isFinite(item)) return item;
-    if (typeof item !== 'object' || isProxy(item))
-      failure('nonserializable source result');
-    if (active.has(item)) failure('nonserializable source result');
-    const proto = Object.getPrototypeOf(item);
-    if (Array.isArray(item) ? proto !== Array.prototype
-        : proto !== Object.prototype && proto !== null)
-      failure('nonserializable source result');
-    active.add(item);
-    const descriptors = Object.getOwnPropertyDescriptors(item);
-    const keys = Reflect.ownKeys(descriptors);
-    if (keys.some(key => typeof key !== 'string' || !key.isWellFormed() ||
-        !('value' in descriptors[key])))
-      failure('nonserializable source result');
-    let result;
-    if (Array.isArray(item)) {
-      const length = descriptors.length?.value;
-      if (!Number.isSafeInteger(length) || length < 0 || keys.length !== length + 1 ||
-          keys.some(key => key !== 'length' && !/^(?:0|[1-9][0-9]*)$/u.test(key)))
-        failure('nonserializable source result');
-      result = [];
-      for (let index = 0; index < length; index++) {
-        if (!Object.hasOwn(descriptors, String(index)))
-          failure('nonserializable source result');
-        result.push(copy(descriptors[String(index)].value, depth + 1));
-      }
-    } else {
-      result = Object.create(null);
-      for (const key of keys) result[key] = copy(descriptors[key].value, depth + 1);
-    }
-    active.delete(item);
-    return result;
-  };
-  const json = JSON.stringify(copy(value, 0));
-  if (typeof json !== 'string') failure('nonserializable source result');
-  if (Buffer.byteLength(json, 'utf8') > maxRecordBytes)
-    failure('source result exceeds admitted custody size');
-  return JSON.parse(json);
-}
-
 const categoryFor = (tenantRef, missionId) =>
   'software-mission-execution.result:'+JSON.stringify([tenantRef,missionId]);
 
@@ -78,23 +22,26 @@ const categoryFor = (tenantRef, missionId) =>
  * from an NI-like string: recompute its original RMN response identity.
  * This is deliberately only usable for a JSON-safe, bounded result. */
 export function admitOriginalSoftwareMissionResult(missionId, value) {
-  if (!isName(missionId)) failure('source identity or outcome mismatch');
-  const admitted = strictOriginalResultSnapshot(value);
-  if (!isObject(admitted)
-    || admitted.executionProvider !== ACTOR
-    || !isObject(admitted.executionReceipt)
-    || !isNi(admitted.executionReceipt.input) || !isNi(admitted.executionReceipt.output)
-    || !isObject(admitted.route) || admitted.route.id !== missionId
-    || !isObject(admitted.outcome)
-    || typeof admitted.route.finalVerified !== 'boolean'
-    || typeof admitted.route.finalAnswered !== 'boolean'
-    || admitted.route.finalVerified !== (admitted.outcome.verified === true)
-    || admitted.route.finalAnswered !== (admitted.outcome.answered === true)
-    || typeof admitted.route.finishedAt !== 'string'
-    || !/^\d{4}-\d\d-\d\dT\d\d:\d\d:\d\d\.\d{3}Z$/u.test(admitted.route.finishedAt)
-    || Number.isNaN(Date.parse(admitted.route.finishedAt))) {
+  if (!isName(missionId) || !isObject(value)
+    || value.executionProvider !== ACTOR
+    || !isObject(value.executionReceipt)
+    || !isNi(value.executionReceipt.input) || !isNi(value.executionReceipt.output)
+    || !isObject(value.route) || value.route.id !== missionId
+    || !isObject(value.outcome)
+    || typeof value.route.finalVerified !== 'boolean'
+    || typeof value.route.finalAnswered !== 'boolean'
+    || value.route.finalVerified !== (value.outcome.verified === true)
+    || value.route.finalAnswered !== (value.outcome.answered === true)
+    || typeof value.route.finishedAt !== 'string'
+    || !/^\d{4}-\d\d-\d\dT\d\d:\d\d:\d\d\.\d{3}Z$/u.test(value.route.finishedAt)
+    || Number.isNaN(Date.parse(value.route.finishedAt))) {
     failure('source identity or outcome mismatch');
   }
+  let json;
+  try { json=JSON.stringify(value); } catch { failure('nonserializable source result'); }
+  if (typeof json !== 'string' || Buffer.byteLength(json,'utf8') > maxRecordBytes)
+    failure('source result exceeds admitted custody size');
+  const admitted = JSON.parse(json);
   const {executionProvider,executionReceipt,...execution} = admitted;
   const response={
     type:'SoftwareMissionExecutionResult',provider:ACTOR,
