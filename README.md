@@ -12,7 +12,9 @@ Market-coordinated software mission cell over immutable source, durable trajecto
 ## Finite original agent source observations
 
 The incumbent `src/agent-tools.mjs` now bounds source enumeration to 4,096
-regular files and directories, with a maximum depth of 64. It reports
+regular files, 4,096 directories and **4,096 entries per directory**, with a
+maximum depth of 64. Its native directory iterator stops reading names at
+that limit, rather than allocating an unlimited `readdirSync()` result. It reports
 `truncated:true` if the real source traversal exceeds that envelope;
 `territorySnapshot` never labels a partial source census complete.
 The original mission runtime refuses an incomplete census **before**
@@ -40,3 +42,10 @@ incomplete-inventory cases. The separate full Software Mission dependency
 graph remains blocked by the published RMN typing `workspace:*` defect.
 An independently tested observation limit is **not** a kernel sandbox,
 a complete mission run, a SignCell/SignChain receipt, or customer acceptance.
+
+A source tree at a directory-entry ceiling receives `truncated:true` even
+if no additional files can be recovered. The limit applies before sorting:
+only a complete directory may be used as a deterministic complete census;
+a partial one is explicitly refused at the original mission entrance.
+Native tests exercise flat-tree fanout above the ceiling and preserve the
+previous exact-provider installed consumer receiving and host boundary.

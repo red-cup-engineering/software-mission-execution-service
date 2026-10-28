@@ -166,4 +166,11 @@ test("source inventory and search report actual resource exhaustion instead of c
   assert.equal(search.truncated, true);
   assert.equal(search.truncationAuthority, "resource");
   assert.equal(tools.changed.size, 0);
+  // A directory precisely at the finite envelope remains complete.
+  rmSync(join(root, "file-04096.txt"));
+  rmSync(join(root, "file-04097.txt"));
+  const exact = territorySnapshot(root);
+  assert.equal(exact.files.length, 4096);
+  assert.equal(exact.truncated, false,
+    "the source census distinguishes a reached capacity from overflow");
 });

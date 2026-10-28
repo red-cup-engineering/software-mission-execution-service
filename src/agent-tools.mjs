@@ -1,5 +1,5 @@
 import { createHash } from "node:crypto";
-import { existsSync, readFileSync, readdirSync, statSync, unlinkSync, writeFileSync } from "node:fs";
+import { existsSync, readFileSync, opendirSync, statSync, unlinkSync, writeFileSync } from "node:fs";
 import { dirname, relative, resolve, sep } from "node:path";
 import { mkdirSync } from "node:fs";
 import { applyEditBlocks, prepareCreateArtifact } from "@red-cup-engineering/software-edit-language-service";
@@ -11,6 +11,7 @@ const SKIP = new Set([".git", "node_modules", ".lake", "dist", "coverage"]);
 // traversal or clipped model observation constitutes source receiving.
 const MAX_WALK_FILES = 4096;
 const MAX_WALK_DIRECTORIES = 4096;
+const MAX_WALK_DIRECTORY_ENTRIES = 4096;
 const MAX_WALK_DEPTH = 64;
 const MAX_FILE_OBSERVATION_BYTES = 256 * 1024;
 const MAX_READ_RESULT_BYTES = 64 * 1024;
@@ -29,10 +30,26 @@ function walk(root, at = root, { maxFiles = MAX_WALK_FILES, maxDirectories = MAX
     if (++directories > maxDirectories || depth > MAX_WALK_DEPTH)
       return { files: files.sort(), truncated: true };
     if (!existsSync(directory)) continue;
-    // Sort before traversal: two equivalent source trees must produce the same
-    // bounded observation regardless of native directory enumeration order.
-    const entries = readdirSync(directory, { withFileTypes: true })
-      .sort((a, b) => a.name < b.name ? -1 : a.name > b.name ? 1 : 0);
+    // Iterate one directory through a bounded native handle. readdirSync()
+    // loads the *entire* directory before a file-count cap can act; a single
+    // enormous fanout could otherwise exhaust process memory. A complete
+    // directory is sorted deterministically. A partial directory remains
+    // explicitly incomplete and may never qualify a source census.
+    const entries = [];
+    const handle = opendirSync(directory);
+    let directoryTruncated = false;
+    try {
+      for (let entry; (entry = handle.readSync()) !== null;) {
+        if (entries.length === MAX_WALK_DIRECTORY_ENTRIES) {
+          directoryTruncated = true;
+          break;
+        }
+        entries.push(entry);
+      }
+    } finally {
+      handle.closeSync();
+    }
+    entries.sort((a, b) => a.name < b.name ? -1 : a.name > b.name ? 1 : 0);
     for (const entry of entries) {
       if (SKIP.has(entry.name)) continue;
       const path = resolve(directory, entry.name);
@@ -43,6 +60,7 @@ function walk(root, at = root, { maxFiles = MAX_WALK_FILES, maxDirectories = MAX
       }
       // Symlinks, devices, named pipes and sockets are not source files.
     }
+    if (directoryTruncated) return { files: files.sort(), truncated: true };
   }
   return { files: files.sort(), truncated: false };
 }
