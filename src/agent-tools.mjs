@@ -7,18 +7,44 @@ import { runTestsCommand } from "@red-cup-engineering/sandbox-command-execution-
 import { insideTerritory as inside } from "./territory-path.mjs";
 
 const SKIP = new Set([".git", "node_modules", ".lake", "dist", "coverage"]);
+// These are finite source/observation budgets, not a claim that an incomplete
+// traversal or clipped model observation constitutes source receiving.
+const MAX_WALK_FILES = 4096;
+const MAX_WALK_DIRECTORIES = 4096;
+const MAX_WALK_DEPTH = 64;
+const MAX_FILE_OBSERVATION_BYTES = 256 * 1024;
+const MAX_READ_RESULT_BYTES = 64 * 1024;
+const MAX_READ_LINES = 200;
+const MAX_SEARCH_FILES = 256;
+const MAX_SEARCH_TOTAL_BYTES = 2 * 1024 * 1024;
+const MAX_SEARCH_RESULTS = 100;
+const MAX_SEARCH_LINE_CHARS = 2048;
 
-
-
-function walk(root, at = root, out = []) {
-  if (!existsSync(at)) return out;
-  for (const entry of readdirSync(at, { withFileTypes: true })) {
-    if (SKIP.has(entry.name)) continue;
-    const path = resolve(at, entry.name);
-    if (entry.isDirectory()) walk(root, path, out);
-    else if (entry.isFile()) out.push(relative(root, path));
+function walk(root, at = root, { maxFiles = MAX_WALK_FILES, maxDirectories = MAX_WALK_DIRECTORIES } = {}) {
+  const files = [];
+  const pending = [{ path: at, depth: 0 }];
+  let directories = 0;
+  while (pending.length) {
+    const { path: directory, depth } = pending.pop();
+    if (++directories > maxDirectories || depth > MAX_WALK_DEPTH)
+      return { files: files.sort(), truncated: true };
+    if (!existsSync(directory)) continue;
+    // Sort before traversal: two equivalent source trees must produce the same
+    // bounded observation regardless of native directory enumeration order.
+    const entries = readdirSync(directory, { withFileTypes: true })
+      .sort((a, b) => a.name < b.name ? -1 : a.name > b.name ? 1 : 0);
+    for (const entry of entries) {
+      if (SKIP.has(entry.name)) continue;
+      const path = resolve(directory, entry.name);
+      if (entry.isDirectory()) pending.push({ path, depth: depth + 1 });
+      else if (entry.isFile()) {
+        if (files.length === maxFiles) return { files: files.sort(), truncated: true };
+        files.push(relative(root, path));
+      }
+      // Symlinks, devices, named pipes and sockets are not source files.
+    }
   }
-  return out;
+  return { files: files.sort(), truncated: false };
 }
 
 export function digest(bytes) {
@@ -26,8 +52,7 @@ export function digest(bytes) {
 }
 
 export function territorySnapshot(root) {
-  const files = walk(root);
-  return { files, truncated: false };
+  return walk(root);
 }
 
 export function createAgentTools({ root, verifyCommand, acceptanceCommand = verifyCommand, commands = {}, writablePaths = [], readablePaths = [] } = {}) {
