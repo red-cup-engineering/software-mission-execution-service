@@ -160,7 +160,7 @@ export function createAgentTools({ root, verifyCommand, acceptanceCommand = veri
           return observe({ ok: false, terminal: true, error: "read requires a nonempty source path" });
         const path = inside(root, args.path), relativePath = relative(root, path);
         if (!readAdmitted(relativePath))
-          return observe({ ok: false, error: "read path is outside declared readable paths: " + relativePath });
+          return observe({ ok: false, terminal: true, error: "read path is outside declared readable paths: " + relativePath });
         let size;
         try {
           const metadata = statSync(path);
