@@ -53,3 +53,39 @@ jobs:
           npm ci --ignore-scripts --no-audit --no-fund --registry=https://registry.561.group/
           node --test test/result-custody.test.mjs
           npm run verify
+      - name: Diagnose original manifest, stale lock and published workspace dependencies
+        if: failure()
+        shell: bash
+        run: |
+          node --input-type=module <<'NODE'
+          import { readFileSync } from 'node:fs';
+          import { execFileSync } from 'node:child_process';
+          const pkg=JSON.parse(readFileSync('package.json','utf8'));
+          const lock=JSON.parse(readFileSync('package-lock.json','utf8'));
+          const declared=pkg.dependencies??{},selected=lock.packages?.['']?.dependencies??{};
+          const mismatches=Object.entries(declared)
+            .filter(([name,version])=>selected[name]!==version)
+            .map(([name,declared])=>({name,declared,locked:selected[name]??null}));
+          process.stdout.write(JSON.stringify({
+            kind:'original-mission-source-lock-readout',
+            manifestVersion:pkg.version,lockVersion:lock.version,
+            directDependencyMismatches:mismatches,
+          })+'\n');
+          for(const [name,version] of Object.entries(declared)) {
+            try {
+              const raw=execFileSync('npm',['view',name+'@'+version,'dependencies',
+                '--json','--registry=https://registry.561.group/'],
+                {encoding:'utf8',timeout:8000,stdio:['ignore','pipe','ignore']});
+              const deps=JSON.parse(raw.trim()||'{}');
+              const unpublished=Object.entries(deps??{})
+                .filter(([,value])=>typeof value==='string'&&value.startsWith('workspace:'));
+              if(unpublished.length) process.stdout.write(JSON.stringify({
+                package:name,version,unpublishedWorkspaceDependencies:unpublished,
+              })+'\n');
+            } catch {
+              process.stdout.write(JSON.stringify({
+                package:name,version,registryMetadata:'unavailable',
+              })+'\n');
+            }
+          }
+          NODE
