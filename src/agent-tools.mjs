@@ -156,13 +156,36 @@ export function createAgentTools({ root, verifyCommand, acceptanceCommand = veri
           ...(incomplete ? { truncationAuthority: "resource" } : {}) });
       }
       if (action.action === "read") {
-        const path = inside(root, args.path);
-        const relativePath = relative(root, path);
-        if (!readAdmitted(relativePath)) return observe({ ok: false, error: `read path is outside declared readable paths: ${relativePath}` });
-        const start = Math.max(1, Number(args.startLine) || 1), end = Number.isSafeInteger(Number(args.endLine)) ? Number(args.endLine) : undefined;
+        if (typeof args.path !== "string" || !args.path.trim())
+          return observe({ ok: false, terminal: true, error: "read requires a nonempty source path" });
+        const path = inside(root, args.path), relativePath = relative(root, path);
+        if (!readAdmitted(relativePath))
+          return observe({ ok: false, error: "read path is outside declared readable paths: " + relativePath });
+        let size;
+        try {
+          const metadata = statSync(path);
+          if (!metadata.isFile()) return observe({ ok: false, terminal: true, error: "read requires an ordinary file" });
+          size = metadata.size;
+        } catch (error) {
+          if (error?.code === "ENOENT") return observe({ ok: false, terminal: true, error: "read source does not exist" });
+          throw error;
+        }
+        if (size > MAX_FILE_OBSERVATION_BYTES)
+          return observe({ ok: false, terminal: true, error: "read source exceeds the bounded 256 KiB file observation" });
+        const start = Math.max(1, Number(args.startLine) || 1);
+        const requestedEnd = Number(args.endLine);
+        const end = Number.isSafeInteger(requestedEnd) && requestedEnd >= start
+          ? requestedEnd : undefined;
         const lines = readFileSync(path, "utf8").split("\n");
-        const last = end === undefined ? lines.length : Math.min(Math.max(start, end), lines.length);
-        return observe({ path: relativePath, startLine: start, endLine: last, text: lines.slice(start - 1, last).join("\n") });
+        const requestedLast = Math.min(end === undefined ? lines.length : end, lines.length);
+        const last = Math.min(requestedLast, start + MAX_READ_LINES - 1);
+        const text = lines.slice(start - 1, last).join("\n");
+        if (Buffer.byteLength(text, "utf8") > MAX_READ_RESULT_BYTES)
+          return observe({ ok: false, terminal: true,
+            error: "read result exceeds 64 KiB; select a narrower line range" });
+        const truncated = last < requestedLast;
+        return observe({ path: relativePath, startLine: start, endLine: last, text, truncated,
+          ...(truncated ? { truncationAuthority: "resource" } : {}) });
       }
       if (action.action === "edit") {
         const path = inside(root, args.path), relativePath = relative(root, path);
