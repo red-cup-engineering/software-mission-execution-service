@@ -94,12 +94,23 @@ export function createAgentTools({ root, verifyCommand, acceptanceCommand = veri
     execute(action) {
       const args = action?.args || {};
       if (action.action === "list_files") {
-        const relativePath = relative(root, resolve(root, args.path || "."));
-        if (relativePath !== "" && !readAdmitted(relativePath)) return observe({ error: `list_files path is outside declared readable paths: ${relativePath}` });
-        const base = inside(root, args.path || ".");
-        const files = walk(root, base).filter(file => readAdmitted(file));
         const requested = Number(args.max);
-        return observe({ files: Number.isSafeInteger(requested) && requested >= 0 ? files.slice(0, requested) : files });
+        const selected = Number.isSafeInteger(requested) && requested >= 0
+          ? Math.min(requested, MAX_WALK_FILES) : MAX_WALK_FILES;
+        if (selected === 0)
+          return observe({ files: [], truncated: true, truncationAuthority: "caller" });
+        const base = inside(root, args.path || ".");
+        const relativePath = relative(root, base);
+        if (relativePath !== "" && !readAdmitted(relativePath))
+          return observe({ error: "list_files path is outside declared readable paths: " + relativePath });
+        if (existsSync(base) && !statSync(base).isDirectory())
+          return observe({ error: "list_files requires a directory" });
+        const discovered = walk(root, base);
+        const admitted = discovered.files.filter(file => readAdmitted(file));
+        const truncated = discovered.truncated || admitted.length > selected;
+        return observe({ files: admitted.slice(0, selected), truncated,
+          ...(truncated ? { truncationAuthority: discovered.truncated || selected === MAX_WALK_FILES
+            ? "resource" : "caller" } : {}) });
       }
       if (action.action === "search") {
         const query = String(args.query || "");
