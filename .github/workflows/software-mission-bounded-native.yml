@@ -1,0 +1,63 @@
+name: Original software-mission bounded verification receiving
+on:
+  pull_request:
+    paths:
+      - 'src/agent-tools.mjs'
+      - 'src/mission-runtime.mjs'
+      - 'test/agent-tools.test.mjs'
+      - 'test/mission-pipeline.test.mjs'
+      - 'test/territory-path.test.mjs'
+      - 'package.json'
+      - '.github/workflows/software-mission-bounded-native.yml'
+  push:
+    branches: [main]
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  original-mission-receiving:
+    runs-on: ubuntu-latest
+    timeout-minutes: 12
+    steps:
+      - name: Select original mission consumer source
+        uses: actions/checkout@11bd71901bbe5b1630ceea73d27597364c9af683 # v4.2.2
+        with:
+          persist-credentials: false
+      - name: Select native Node 22
+        uses: actions/setup-node@49933ea5288caeca8642d1e84afbd3f7d6820020 # v4.4.0
+        with:
+          node-version: '22'
+      - name: Select original bounded-verification supplier at exact merged commit
+        uses: actions/checkout@11bd71901bbe5b1630ceea73d27597364c9af683
+        with:
+          repository: red-cup-engineering/sandbox-command-execution-service
+          ref: 3a94151329e11b281e7f2c3122b77de206ac74a8
+          path: original-command-supplier
+          persist-credentials: false
+      - name: Resolve genuine consumer dependencies and exact source supplier
+        shell: bash
+        run: |
+          set -euo pipefail
+          test "$(git -C original-command-supplier rev-parse HEAD)" = "3a94151329e11b281e7f2c3122b77de206ac74a8"
+          npm ci --ignore-scripts --no-audit --no-fund --registry=https://registry.561.group/
+          mkdir -p "$RUNNER_TEMP/original-command-package"
+          (
+            cd original-command-supplier
+            npm pack --ignore-scripts --silent --pack-destination "$RUNNER_TEMP/original-command-package" >/dev/null
+          )
+          shopt -s nullglob
+          archives=( "$RUNNER_TEMP"/original-command-package/*.tgz )
+          test "${#archives[@]}" -eq 1
+          archive="${archives[0]}"
+          sha256sum "$archive"
+          npm install --no-save --ignore-scripts --no-audit --no-fund --package-lock=false "$archive" --registry=https://registry.561.group/
+          test "$(node -p "require('./node_modules/@red-cup-engineering/sandbox-command-execution-service/package.json').version")" = "1.0.0"
+          cmp original-command-supplier/src/command-execution.mjs node_modules/@red-cup-engineering/sandbox-command-execution-service/src/command-execution.mjs
+          cmp original-command-supplier/src/command-normalization.mjs node_modules/@red-cup-engineering/sandbox-command-execution-service/src/command-normalization.mjs
+          node --input-type=module -e 'import {admitCommandLimits} from "@red-cup-engineering/sandbox-command-execution-service"; if (admitCommandLimits({timeoutMs:1000}).timeoutMs !== 1000) process.exit(1)'
+      - name: Exercise original mission Work, bounded refusal and resource attribution
+        run: |
+          npm run verify
+          echo "Original Mission installed-consumer source assayed; registry release, deployed host and customer acceptance remain separately unreceived."
