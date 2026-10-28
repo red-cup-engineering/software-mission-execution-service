@@ -522,6 +522,9 @@ async function runMaterializedMission(input, {
     if (conflicts.length) throw new Error(`protected acceptance artifacts overlap the writable lane: ${conflicts.map((artifact) => artifact.path).join(", ")}`);
   }
   const startedAt = new Date().toISOString(), snapshot = territorySnapshot(manifest.territory);
+  // A partial source census cannot qualify a complete source/work identity.
+  // Refuse before baseline tests, market acquisition or process-node contact.
+  if (snapshot.truncated) throw new Error("software mission territory snapshot exceeds the finite source inventory budget");
   const baselineVerification = manifest.verifyCommand
     ? runTestsCommand(manifest.territory, manifest.verifyCommand)
     : { passed: true, output: "not-applicable: inquiry has no mutation acceptance command" };
