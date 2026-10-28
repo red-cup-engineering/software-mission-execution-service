@@ -41,7 +41,30 @@ jobs:
         run: |
           set -euo pipefail
           test "$(git -C original-command-supplier rev-parse HEAD)" = "3a94151329e11b281e7f2c3122b77de206ac74a8"
-          npm ci --ignore-scripts --no-audit --no-fund --registry=https://registry.561.group/
+          if ! npm ci --ignore-scripts --no-audit --no-fund --registry=https://registry.561.group/; then
+            echo "::error::Original mission dependency lock/registry closure could not be installed. Inspect actual published direct dependencies; no local source substitution or silent workspace-version rewrite."
+            node --input-type=module <<'NODE'
+          import { readFileSync } from "node:fs";
+          import { execFileSync } from "node:child_process";
+          const { dependencies } = JSON.parse(readFileSync("package.json", "utf8"));
+          for (const [name, version] of Object.entries(dependencies).sort(([a],[b])=>a.localeCompare(b))) {
+            try {
+              const stdout = execFileSync("npm", [
+                "view", name + "@" + version, "dependencies", "--json",
+                "--registry=https://registry.561.group/"
+              ], { encoding:"utf8", timeout:8000, stdio:["ignore","pipe","ignore"] });
+              const record = JSON.parse(stdout.trim() || "{}");
+              const workspaces = Object.entries(record ?? {}).filter(([,value]) =>
+                typeof value === "string" && value.startsWith("workspace:"));
+              if (workspaces.length)
+                process.stdout.write(JSON.stringify({package:name,version,unpublishedWorkspaceDeps:workspaces})+"\\n");
+            } catch {
+              process.stdout.write(JSON.stringify({package:name,version,registryRead:"unavailable"})+"\\n");
+            }
+          }
+          NODE
+            exit 1
+          fi
           mkdir -p "$RUNNER_TEMP/original-command-package"
           (
             cd original-command-supplier
