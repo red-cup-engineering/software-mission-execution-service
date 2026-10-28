@@ -3,6 +3,7 @@ on:
   pull_request:
     paths:
       - 'src/agent-tools.mjs'
+      - 'src/mission-runtime.mjs'
       - 'src/territory-path.mjs'
       - 'test/agent-tools.test.mjs'
       - '.github/workflows/software-mission-bounded-native.yml'
@@ -46,6 +47,7 @@ jobs:
         shell: bash
         run: |
           set -euo pipefail
+          node --check src/mission-runtime.mjs
           test "$(git -C original-command-supplier rev-parse HEAD)" = "3a94151329e11b281e7f2c3122b77de206ac74a8"
           test "$(git -C original-edit-supplier rev-parse HEAD)" = "45e8b9c6ff6399544382880c3643190954518775"
           mkdir -p "$RUNNER_TEMP/agent-tools-packages" "$RUNNER_TEMP/agent-tools-consumer/src" "$RUNNER_TEMP/agent-tools-consumer/test"
