@@ -51,6 +51,15 @@ test("create delegates the absent exact writable target to the edit-language pro
   assert.match(duplicate.error, /target absent/);
   const escaped = JSON.parse(tools.execute({ action: "create", args: { path: "../escape.mjs", content: "x" } }));
   assert.equal(escaped.ok, false);
+  assert.equal(escaped.terminal, true);
+  assert.match(escaped.error, /path escapes the admitted territory/u);
+  for (const path of [null, undefined, "", {}, join(tmpdir(), "other-owner-test.mjs")]) {
+    const refused = JSON.parse(tools.execute({ action: "create", args: { path, content: "x" } }));
+    assert.equal(refused.ok, false);
+    assert.equal(refused.terminal, true);
+  }
+  assert.equal(tools.changed.size, 1,
+    "refused create attempts cannot change source Work history");
 });
 
 test("fabrication tools refuse symlinked reads, edits, creations, and checkpoint restores", (t) => {
