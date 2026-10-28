@@ -61,3 +61,64 @@ jobs:
         run: |
           npm run verify
           echo "Original Mission installed-consumer source assayed; registry release, deployed host and customer acceptance remain separately unreceived."
+
+  exact-agent-tools-consumer:
+    runs-on: ubuntu-latest
+    timeout-minutes: 8
+    strategy:
+      fail-fast: false
+      matrix:
+        node: ['22', '24']
+    steps:
+      - name: Select original mission source and test
+        uses: actions/checkout@11bd71901bbe5b1630ceea73d27597364c9af683
+        with:
+          persist-credentials: false
+      - name: Use real Node runtime for the original mission consumer
+        uses: actions/setup-node@49933ea5288caeca8642d1e84afbd3f7d6820020
+        with:
+          node-version: ${{ matrix.node }}
+      - name: Select exact bounded execution supplier
+        uses: actions/checkout@11bd71901bbe5b1630ceea73d27597364c9af683
+        with:
+          repository: red-cup-engineering/sandbox-command-execution-service
+          ref: 3a94151329e11b281e7f2c3122b77de206ac74a8
+          path: original-command-supplier
+          persist-credentials: false
+      - name: Select the actual source-edit dependency used by this consumer
+        uses: actions/checkout@11bd71901bbe5b1630ceea73d27597364c9af683
+        with:
+          repository: red-cup-engineering/software-edit-language-service
+          ref: 45e8b9c6ff6399544382880c3643190954518775
+          path: original-edit-supplier
+          persist-credentials: false
+      - name: Pack exact original providers, install clean, execute real original agent-tools tests
+        shell: bash
+        run: |
+          set -euo pipefail
+          test "$(git -C original-command-supplier rev-parse HEAD)" = "3a94151329e11b281e7f2c3122b77de206ac74a8"
+          test "$(git -C original-edit-supplier rev-parse HEAD)" = "45e8b9c6ff6399544382880c3643190954518775"
+          mkdir -p "$RUNNER_TEMP/agent-tools-packages" "$RUNNER_TEMP/agent-tools-consumer/src" "$RUNNER_TEMP/agent-tools-consumer/test"
+          (
+            cd original-command-supplier
+            npm pack --ignore-scripts --silent --pack-destination "$RUNNER_TEMP/agent-tools-packages" >/dev/null
+          )
+          (
+            cd original-edit-supplier
+            npm pack --ignore-scripts --silent --pack-destination "$RUNNER_TEMP/agent-tools-packages" >/dev/null
+          )
+          shopt -s nullglob
+          archives=( "$RUNNER_TEMP"/agent-tools-packages/*.tgz )
+          test "${#archives[@]}" -eq 2
+          sha256sum "${archives[@]}"
+          npm install --prefix "$RUNNER_TEMP/agent-tools-consumer" "${archives[@]}" --ignore-scripts --no-audit --no-fund --no-package-lock
+          cmp original-command-supplier/src/command-execution.mjs "$RUNNER_TEMP/agent-tools-consumer/node_modules/@red-cup-engineering/sandbox-command-execution-service/src/command-execution.mjs"
+          cmp original-edit-supplier/src/edit-language.mjs "$RUNNER_TEMP/agent-tools-consumer/node_modules/@red-cup-engineering/software-edit-language-service/src/edit-language.mjs"
+          cp src/agent-tools.mjs src/territory-path.mjs "$RUNNER_TEMP/agent-tools-consumer/src/"
+          cp test/agent-tools.test.mjs "$RUNNER_TEMP/agent-tools-consumer/test/"
+          (
+            cd "$RUNNER_TEMP/agent-tools-consumer"
+            node --check src/agent-tools.mjs
+            node --test test/agent-tools.test.mjs
+          )
+          echo "Exact installed source suppliers + actual original mission-agent-tools consumer passed; complete mission package/workspace and production host are separately unreceived."
