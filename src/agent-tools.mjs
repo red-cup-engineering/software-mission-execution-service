@@ -50,6 +50,7 @@ function walk(root, at = root, { maxFiles = MAX_WALK_FILES, maxDirectories = MAX
       handle.closeSync();
     }
     entries.sort((a, b) => a.name < b.name ? -1 : a.name > b.name ? 1 : 0);
+    let unobserved = false;
     for (const entry of entries) {
       if (SKIP.has(entry.name)) continue;
       const path = resolve(directory, entry.name);
@@ -57,10 +58,14 @@ function walk(root, at = root, { maxFiles = MAX_WALK_FILES, maxDirectories = MAX
       else if (entry.isFile()) {
         if (files.length === maxFiles) return { files: files.sort(), truncated: true };
         files.push(relative(root, path));
+      } else {
+        // Symlinks, pipes, sockets and devices are not ordinary source
+        // files. Never silently promote their omission into a complete
+        // Work source census: an operator must explicitly resolve them.
+        unobserved = true;
       }
-      // Symlinks, devices, named pipes and sockets are not source files.
     }
-    if (directoryTruncated) return { files: files.sort(), truncated: true };
+    if (directoryTruncated || unobserved) return { files: files.sort(), truncated: true };
   }
   return { files: files.sort(), truncated: false };
 }
