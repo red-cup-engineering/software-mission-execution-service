@@ -174,3 +174,28 @@ test("source inventory and search report actual resource exhaustion instead of c
   assert.equal(exact.truncated, false,
     "the source census distinguishes a reached capacity from overflow");
 });
+
+
+test("unobserved symbolic and special filesystem entries do not certify a complete source Work census",t=>{
+  const parent=mkdtempSync(join(tmpdir(),"mission-unobserved-source-"));
+  t.after(()=>rmSync(parent,{recursive:true,force:true}));
+  const root=join(parent,"territory");
+  mkdirSync(root);
+  writeFileSync(join(root,"ordinary.mjs"),"export const observed=true;\n");
+  assert.deepEqual(territorySnapshot(root),{files:["ordinary.mjs"],truncated:false});
+  const external=join(parent,"external.mjs");
+  writeFileSync(external,"export const notAdmitted=true;\n");
+  symlinkSync(external,join(root,"outside.mjs"));
+  const snapshot=territorySnapshot(root);
+  assert.deepEqual(snapshot,{files:["ordinary.mjs"],truncated:true},
+    "a skipped symlink must make original source coverage incomplete");
+  const tools=createAgentTools({root});
+  const listing=JSON.parse(tools.execute({action:"list_files",args:{}}));
+  assert.deepEqual(listing,{files:["ordinary.mjs"],truncated:true,truncationAuthority:"resource"});
+  const search=JSON.parse(tools.execute({action:"search",args:{query:"notAdmitted"}}));
+  assert.deepEqual(search,{hits:[],truncated:true,truncationAuthority:"resource"});
+  assert.throws(()=>tools.execute({action:"read",args:{path:"outside.mjs"}}),/symbolic link/u);
+  assert.equal(tools.changed.size,0);
+  rmSync(join(root,"outside.mjs"));
+  assert.deepEqual(territorySnapshot(root),{files:["ordinary.mjs"],truncated:false});
+});

@@ -49,3 +49,12 @@ only a complete directory may be used as a deterministic complete census;
 a partial one is explicitly refused at the original mission entrance.
 Native tests exercise flat-tree fanout above the ceiling and preserve the
 previous exact-provider installed consumer receiving and host boundary.
+
+The source census also refuses completeness if a scanned directory contains
+unobserved symlinks, sockets, device entries or named pipes. Such entries are
+neither ordinary source files nor silently accepted absences. The original
+mission runtime already rejects `truncated:true` before starting a new
+process node. Ordinary-file source trees remain admitted. The native
+agent-tool tests independently inspect a symlink pointing outside the
+territory, require incomplete listing and search, and confirm the original
+symlink read guard still rejects its traversal.
