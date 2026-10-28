@@ -156,7 +156,18 @@ export function createAgentTools({ root, verifyCommand, acceptanceCommand = veri
         // Both the requested and provider-returned paths must stay within the
         // same ordinary-file territory; an admitted writable lane is not a
         // capability to follow symlinks into another owner.
-        inside(root, args.path);
+        if (typeof args.path !== "string" || !args.path.trim())
+          return observe({ ok: false, terminal: true, error: "create requires a nonempty target path" });
+        try { inside(root, args.path); }
+        catch (error) {
+          // Lexical traversal is a malformed customer action, not a tool-host
+          // exception: preserve the original mission JSON refusal and avoid
+          // crashing its action loop. Keep symlink/security inspection errors
+          // explicit and thrown under the preexisting territory contract.
+          if (error?.message === "path escapes the admitted territory")
+            return observe({ ok: false, terminal: true, error: error.message });
+          throw error;
+        }
         const prepared = prepareCreateArtifact({ workspace: root, path: args.path, content: args.content, writablePaths });
         if (!prepared.ok) return observe({ ok: false, terminal: true, error: prepared.reason });
         const receivedPath = inside(root, prepared.path);
