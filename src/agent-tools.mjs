@@ -113,24 +113,47 @@ export function createAgentTools({ root, verifyCommand, acceptanceCommand = veri
             ? "resource" : "caller" } : {}) });
       }
       if (action.action === "search") {
-        const query = String(args.query || "");
-        if (!query) return observe({ error: "search requires args.query" });
-        const relativePath = relative(root, resolve(root, args.path || "."));
-        if (relativePath !== "" && !readAdmitted(relativePath)) return observe({ error: `search path is outside declared readable paths: ${relativePath}` });
-        const base = inside(root, args.path || ".");
-        const hits = [];
+        if (typeof args.query !== "string" || !args.query || args.query.length > 512)
+          return observe({ error: "search requires a nonempty query of at most 512 characters" });
         const requested = Number(args.max);
-        for (const file of walk(root, base)) {
+        const selected = Number.isSafeInteger(requested) && requested >= 0
+          ? Math.min(requested, MAX_SEARCH_RESULTS) : MAX_SEARCH_RESULTS;
+        if (selected === 0)
+          return observe({ hits: [], truncated: true, truncationAuthority: "caller" });
+        const base = inside(root, args.path || ".");
+        const relativePath = relative(root, base);
+        if (relativePath !== "" && !readAdmitted(relativePath))
+          return observe({ error: "search path is outside declared readable paths: " + relativePath });
+        if (existsSync(base) && !statSync(base).isDirectory())
+          return observe({ error: "search requires a directory" });
+        const discovered = walk(root, base, { maxFiles: MAX_SEARCH_FILES });
+        const hits = [], query = args.query.toLowerCase();
+        let inspectedBytes = 0, incomplete = discovered.truncated;
+        for (const file of discovered.files) {
           if (!readAdmitted(file)) continue;
           const path = inside(root, file);
-          let text;
-          try { text = readFileSync(path, "utf8"); } catch { continue; }
-          for (const [index, line] of text.split("\n").entries()) {
-            if (line.toLowerCase().includes(query.toLowerCase())) hits.push({ path: file, line: index + 1, text: line });
-            if (Number.isSafeInteger(requested) && requested >= 0 && hits.length >= requested) return observe({ hits, truncated: true, truncationAuthority: "caller" });
+          let source;
+          try {
+            const size = statSync(path).size;
+            if (size > MAX_FILE_OBSERVATION_BYTES) { incomplete = true; continue; }
+            if (inspectedBytes + size > MAX_SEARCH_TOTAL_BYTES) { incomplete = true; break; }
+            source = readFileSync(path, "utf8");
+            inspectedBytes += size;
+          } catch { incomplete = true; continue; }
+          for (const [index, line] of source.split("\n").entries()) {
+            if (!line.toLowerCase().includes(query)) continue;
+            const lineTruncated = line.length > MAX_SEARCH_LINE_CHARS;
+            if (lineTruncated) incomplete = true;
+            hits.push({ path: file, line: index + 1,
+              text: lineTruncated ? line.slice(0, MAX_SEARCH_LINE_CHARS) : line,
+              ...(lineTruncated ? { lineTruncated: true } : {}) });
+            if (hits.length === selected)
+              return observe({ hits, truncated: true,
+                truncationAuthority: incomplete || selected === MAX_SEARCH_RESULTS ? "resource" : "caller" });
           }
         }
-        return observe({ hits, truncated: false });
+        return observe({ hits, truncated: incomplete,
+          ...(incomplete ? { truncationAuthority: "resource" } : {}) });
       }
       if (action.action === "read") {
         const path = inside(root, args.path);
