@@ -172,10 +172,12 @@ export function createAgentTools({ root, verifyCommand, acceptanceCommand = veri
         }
         if (size > MAX_FILE_OBSERVATION_BYTES)
           return observe({ ok: false, terminal: true, error: "read source exceeds the bounded 256 KiB file observation" });
-        const start = Math.max(1, Number(args.startLine) || 1);
-        const requestedEnd = Number(args.endLine);
-        const end = Number.isSafeInteger(requestedEnd) && requestedEnd >= start
-          ? requestedEnd : undefined;
+        const start = args.startLine === undefined ? 1 : Number(args.startLine);
+        if (!Number.isSafeInteger(start) || start < 1)
+          return observe({ ok: false, terminal: true, error: "read startLine must be a positive safe integer" });
+        const end = args.endLine === undefined ? undefined : Number(args.endLine);
+        if (end !== undefined && (!Number.isSafeInteger(end) || end < start))
+          return observe({ ok: false, terminal: true, error: "read endLine must be a safe integer not before startLine" });
         const lines = readFileSync(path, "utf8").split("\n");
         const requestedLast = Math.min(end === undefined ? lines.length : end, lines.length);
         const last = Math.min(requestedLast, start + MAX_READ_LINES - 1);
