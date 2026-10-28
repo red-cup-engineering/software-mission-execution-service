@@ -129,3 +129,37 @@ test('body fields are not secretly reinterpreted as customer acceptance or payme
   assert.equal(checked.outcome.verified,false);
   assert.equal(checked.executionReceipt.output,v.executionReceipt.output);
 }));
+
+test('custody never invokes executable getters, toJSON or Proxy traps during result admission',async()=>withRoot(async root=>{
+  const c=opened(root);
+  let invoked=0;
+  const accessor=source();
+  Object.defineProperty(accessor.route,'supplier',{enumerable:true,
+    get(){invoked++;throw new Error('a hostile getter ran');}});
+  await assert.rejects(c.record({principal,missionId,result:accessor}),/nonserializable source result/);
+  const conversion=source();
+  conversion.toJSON=()=>{invoked++;throw new Error('supplier toJSON ran');};
+  await assert.rejects(c.record({principal,missionId,result:conversion}),/nonserializable source result/);
+  const proxy=source();
+  proxy.untrusted=new Proxy({text:'not observable'},{ownKeys(){invoked++;throw new Error('proxy trap ran');}});
+  await assert.rejects(c.record({principal,missionId,result:proxy}),/nonserializable source result/);
+  assert.equal(invoked,0,'result identity admission may never execute supplier object behavior');
+  await assert.rejects(c.read({principal,missionId}),/no original result/);
+}));
+
+test('custody refuses lossy or ambiguous JSON values before persisting original evidence',async()=>withRoot(async root=>{
+  const c=opened(root);
+  for(const nonJson of [{x:NaN},{x:Infinity},{x:undefined},{x:2n},{x:new Date('2026-10-27')}]) {
+    await assert.rejects(c.record({principal,missionId,result:{...source(),nonJson}}),
+      /nonserializable source result/);
+  }
+  const sparse=[];sparse[1]=1;
+  await assert.rejects(c.record({principal,missionId,result:{...source(),sparse}}),
+    /nonserializable source result/);
+  const hidden={...source()};hidden[Symbol('source')]=true;
+  await assert.rejects(c.record({principal,missionId,result:hidden}),
+    /nonserializable source result/);
+  const malformed={...source(),broken:'\uD800'};
+  await assert.rejects(c.record({principal,missionId,result:malformed}),
+    /nonserializable source result/);
+}));
