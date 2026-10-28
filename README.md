@@ -9,51 +9,70 @@
 
 Market-coordinated software mission cell over immutable source, durable trajectory memory, isolated tools, and customer induction.
 
-## Source-owned customer Work execution budgets (pending supplier receiving)
+## Finite original agent source observations
 
-The original mission engine uses one
-[`@red-cup-engineering/sandbox-command-execution-service`](https://github.com/red-cup-engineering/sandbox-command-execution-service)
-at source verification, post-edit checks, acceptance and named commands. The
-upstream [bounded execution PR #1](https://github.com/red-cup-engineering/sandbox-command-execution-service/pull/1)
-repairs actual infinite output/no deadline, wrong-cwd authority, and
-POSIX orphaned children of timed-out workers, and receives 16/16 tests on
-real native Node 22 with exact source Git hashes.
-This mission source change **does not duplicate or replace that supplier**.
+The incumbent `src/agent-tools.mjs` now bounds source enumeration to 4,096
+regular files, 4,096 directories and **4,096 entries per directory**, with a
+maximum depth of 64. Its native directory iterator stops reading names at
+that limit, rather than allocating an unlimited `readdirSync()` result. It reports
+`truncated:true` if the real source traversal exceeds that envelope;
+`territorySnapshot` never labels a partial source census complete.
+The original mission runtime refuses an incomplete census **before**
+verification commands, model acquisition or Work process-node creation.
+The name/path boundary remains the original `insideTerritory` reader,
+which refuses symlink traversal and workspace escapes.
 
-A Work principal may now supply optional
-`commandLimits: {timeoutMs,maxOutputBytes}` on its original `runMission`
-input. The exact policy is normalized by the supplier's
-`admitCommandLimits` (not a new local policy calculator) before Work
-initialization, included in the existing source-derived mission identity
-when explicitly selected, and passed to original baseline verification,
-acceptance verification, deterministic replay, resumed process nodes,
-post-edit checks and separately admitted named commands. Missing policy
-retains the finite supplier defaults. The accepted Work original directory
-cannot be displaced by `opts.cwd`.
+The original `list_files`, `search` and `read` actions now provide finite
+readouts and evidence of truncation, rather than silently treating a clipped
+result as complete. Native budgets are 4,096 listed files, 256 searched files
+and 2 MiB cumulative searched file bytes, 100 matched lines, and
+256 KiB per input file. A single `read` returns at most 200 lines and 64 KiB;
+larger observations require narrowing the selected source range. The host
+returns typed refusals for malformed read coordinates, missing files and
+oversized source instead of crashing the process-node action loop. A
+request for `max:0` returns no matches, explicitly marked
+`truncationAuthority:"caller"`. Scanned file exhaustion or clipped
+line text is `truncationAuthority:"resource"`.
 
-The existing actor `checkObservation` and named-command readouts retain
-`failureKind` (deadline/output-limit/spawn/signaled/cancelled/nonzero-exit
-or unknown for an old/incomplete readout), measured `observedWallMs`,
-`processGroupCleanup` (the actual POSIX cleanup-signal attempt, otherwise
-unknown for an old provider), and the effective numeric `limits` alongside
-`passed` and `output`.
-A passing syntax/test command remains merely verification of one process
-attempt. A monetary claim requires **separate** admitted execution
-capacity, original buyer rights/Work, output hashes, independent receiving,
-customer acceptance, provider costs, settlement and corporate revenue
-recognition. Local wall time is not CPU occupancy, independently verified
-resource metering or a billable contract by itself.
+The [original native receiving workflow](.github/workflows/software-mission-bounded-native.yml)
+packs and installs the two exact original tool dependencies into a clean
+consumer and runs the existing agent-tool test suite on Node 22 and 24,
+including adverse large-source, listing, search, line-window and
+incomplete-inventory cases. The separate full Software Mission dependency
+graph remains blocked by the published RMN typing `workspace:*` defect.
+An independently tested observation limit is **not** a kernel sandbox,
+a complete mission run, a SignCell/SignChain receipt, or customer acceptance.
 
-**Hard downstream hold:** this repo's original pinned manifest still
-selects `sandbox-command-execution-service@1.0.0`, which does *not*
-export the new `admitCommandLimits`. Do NOT merge/publish this dependent
-source until original Engineering publishes and selects an exact edition
-of [supplier PR #1](https://github.com/red-cup-engineering/sandbox-command-execution-service/pull/1),
-updates the pinned dependency through its actual package-release owner,
-runs the full original mission native tests, exercises an isolated
-customer Work result, and verifies coherent recorded counters across
-baseline, edit and acceptance. The 2 new `agent-tools` tests exercise
-real hanging/output-flooding child cases but are **authored, not native
-dependency-backed executed** here. Exact changed agent/source/test files
-have been parsed or source-extracted and mock exercised; that is not
-evidence that the installed marketplace/mission host has received them.
+A source tree at a directory-entry ceiling receives `truncated:true` even
+if no additional files can be recovered. The limit applies before sorting:
+only a complete directory may be used as a deterministic complete census;
+a partial one is explicitly refused at the original mission entrance.
+Native tests exercise flat-tree fanout above the ceiling and preserve the
+previous exact-provider installed consumer receiving and host boundary.
+
+The source census also refuses completeness if a scanned directory contains
+unobserved symlinks, sockets, device entries or named pipes. Such entries are
+neither ordinary source files nor silently accepted absences. The original
+mission runtime already rejects `truncated:true` before starting a new
+process node. Ordinary-file source trees remain admitted. The native
+agent-tool tests independently inspect a symlink pointing outside the
+territory, require incomplete listing and search, and confirm the original
+symlink read guard still rejects its traversal.
+
+## Original command execution limits and refusal evidence
+
+The original Software Mission Work and its source-derived identity accept an
+optional `commandLimits:{timeoutMs,maxOutputBytes}` admitted by the original
+`sandbox-command-execution-service` supplier. This applies to baseline
+verification, acceptance commands, replay, process-node work and named
+commands. `failureKind`, measured `observedWallMs`, attempted
+`processGroupCleanup` and actual limits remain in test/finish/command receipts.
+Absent legacy fields remain unknown.
+
+This reconciles [original Software Mission PR #1](https://github.com/red-cup-engineering/software-mission-execution-service/pull/1)
+with main's independently received finite source census and symlink refusal.
+The existing native `software-mission-bounded-native.yml` installs the exact
+original command and edit providers and exercises these tests on Node22/24.
+The full mission registry installation is still blocked by unpublished RMN
+typing 0.0.2 and the stale mission dependency lock; source integration alone
+does not mean that customer Work or SignChain is settled.

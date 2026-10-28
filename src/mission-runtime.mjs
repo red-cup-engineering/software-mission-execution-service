@@ -472,9 +472,7 @@ async function runMaterializedMission(input, {
     : input.acceptanceCapsulePath ? loadAcceptanceCapsule(input.acceptanceCapsulePath, { territory }) : null;
   if (acceptanceCapsule && input.acceptanceCommand && input.acceptanceCommand !== acceptanceCapsule.command) throw new Error("mission acceptance command conflicts with protected acceptance capsule");
   if (acceptanceCapsule && Array.isArray(input.testVectors) && JSON.stringify(normalizeTestVectors(input.testVectors)) !== JSON.stringify(acceptanceCapsule.testVectors)) throw new Error("mission test vectors conflict with protected acceptance capsule");
-  // Source-owned command budgets bind to the actual Work identity. An old
-  // pinned command supplier without this admission cannot claim that it ran
-  // independently qualified, resource-bounded customer verification.
+  // Original source-owned command supplier admits Work limits before execution.
   const commandLimits = input.commandLimits === undefined
     ? undefined : admitCommandLimits(input.commandLimits);
   const manifest = {
@@ -529,6 +527,9 @@ async function runMaterializedMission(input, {
     if (conflicts.length) throw new Error(`protected acceptance artifacts overlap the writable lane: ${conflicts.map((artifact) => artifact.path).join(", ")}`);
   }
   const startedAt = new Date().toISOString(), snapshot = territorySnapshot(manifest.territory);
+  // A partial source census cannot qualify a complete source/work identity.
+  // Refuse before baseline tests, market acquisition or process-node contact.
+  if (snapshot.truncated) throw new Error("software mission territory snapshot exceeds the finite source inventory budget");
   const baselineVerification = manifest.verifyCommand
     ? runTestsCommand(manifest.territory, manifest.verifyCommand, commandLimits)
     : { passed: true, output: "not-applicable: inquiry has no mutation acceptance command" };

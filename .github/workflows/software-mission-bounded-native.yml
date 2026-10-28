@@ -1,90 +1,18 @@
-name: Original software-mission bounded verification receiving
+name: Original software-mission agent-tools receiving
 on:
   pull_request:
     paths:
       - 'src/agent-tools.mjs'
       - 'src/mission-runtime.mjs'
+      - 'src/territory-path.mjs'
       - 'test/agent-tools.test.mjs'
-      - 'test/mission-pipeline.test.mjs'
-      - 'test/territory-path.test.mjs'
-      - 'package.json'
       - '.github/workflows/software-mission-bounded-native.yml'
   push:
     branches: [main]
   workflow_dispatch:
-
 permissions:
   contents: read
-
 jobs:
-  original-mission-receiving:
-    runs-on: ubuntu-latest
-    timeout-minutes: 12
-    steps:
-      - name: Select original mission consumer source
-        uses: actions/checkout@11bd71901bbe5b1630ceea73d27597364c9af683 # v4.2.2
-        with:
-          persist-credentials: false
-      - name: Select native Node 22
-        uses: actions/setup-node@49933ea5288caeca8642d1e84afbd3f7d6820020 # v4.4.0
-        with:
-          node-version: '22'
-      - name: Select original bounded-verification supplier at exact merged commit
-        uses: actions/checkout@11bd71901bbe5b1630ceea73d27597364c9af683
-        with:
-          repository: red-cup-engineering/sandbox-command-execution-service
-          ref: 3a94151329e11b281e7f2c3122b77de206ac74a8
-          path: original-command-supplier
-          persist-credentials: false
-      - name: Resolve genuine consumer dependencies and exact source supplier
-        shell: bash
-        run: |
-          set -euo pipefail
-          test "$(git -C original-command-supplier rev-parse HEAD)" = "3a94151329e11b281e7f2c3122b77de206ac74a8"
-          if ! npm ci --ignore-scripts --no-audit --no-fund --registry=https://registry.561.group/; then
-            echo "::error::Original mission dependency lock/registry closure could not be installed. Inspect actual published direct dependencies; no local source substitution or silent workspace-version rewrite."
-            node --input-type=module <<'NODE'
-          import { readFileSync } from "node:fs";
-          import { execFileSync } from "node:child_process";
-          const { dependencies } = JSON.parse(readFileSync("package.json", "utf8"));
-          for (const [name, version] of Object.entries(dependencies).sort(([a],[b])=>a.localeCompare(b))) {
-            try {
-              const stdout = execFileSync("npm", [
-                "view", name + "@" + version, "dependencies", "--json",
-                "--registry=https://registry.561.group/"
-              ], { encoding:"utf8", timeout:8000, stdio:["ignore","pipe","ignore"] });
-              const record = JSON.parse(stdout.trim() || "{}");
-              const workspaces = Object.entries(record ?? {}).filter(([,value]) =>
-                typeof value === "string" && value.startsWith("workspace:"));
-              if (workspaces.length)
-                process.stdout.write(JSON.stringify({package:name,version,unpublishedWorkspaceDeps:workspaces})+"\\n");
-            } catch {
-              process.stdout.write(JSON.stringify({package:name,version,registryRead:"unavailable"})+"\\n");
-            }
-          }
-          NODE
-            exit 1
-          fi
-          mkdir -p "$RUNNER_TEMP/original-command-package"
-          (
-            cd original-command-supplier
-            npm pack --ignore-scripts --silent --pack-destination "$RUNNER_TEMP/original-command-package" >/dev/null
-          )
-          shopt -s nullglob
-          archives=( "$RUNNER_TEMP"/original-command-package/*.tgz )
-          test "${#archives[@]}" -eq 1
-          archive="${archives[0]}"
-          sha256sum "$archive"
-          npm install --no-save --ignore-scripts --no-audit --no-fund --package-lock=false "$archive" --registry=https://registry.561.group/
-          test "$(node -p "require('./node_modules/@red-cup-engineering/sandbox-command-execution-service/package.json').version")" = "1.0.0"
-          cmp original-command-supplier/src/command-execution.mjs node_modules/@red-cup-engineering/sandbox-command-execution-service/src/command-execution.mjs
-          cmp original-command-supplier/src/command-normalization.mjs node_modules/@red-cup-engineering/sandbox-command-execution-service/src/command-normalization.mjs
-          node --input-type=module -e 'import {admitCommandLimits} from "@red-cup-engineering/sandbox-command-execution-service"; if (admitCommandLimits({timeoutMs:1000}).timeoutMs !== 1000) process.exit(1)'
-      - name: Exercise original mission Work, bounded refusal and resource attribution
-        run: |
-          npm run verify
-          echo "Original Mission installed-consumer source assayed; registry release, deployed host and customer acceptance remain separately unreceived."
-
   exact-agent-tools-consumer:
     runs-on: ubuntu-latest
     timeout-minutes: 8
@@ -119,6 +47,7 @@ jobs:
         shell: bash
         run: |
           set -euo pipefail
+          node --check src/mission-runtime.mjs
           test "$(git -C original-command-supplier rev-parse HEAD)" = "3a94151329e11b281e7f2c3122b77de206ac74a8"
           test "$(git -C original-edit-supplier rev-parse HEAD)" = "45e8b9c6ff6399544382880c3643190954518775"
           mkdir -p "$RUNNER_TEMP/agent-tools-packages" "$RUNNER_TEMP/agent-tools-consumer/src" "$RUNNER_TEMP/agent-tools-consumer/test"

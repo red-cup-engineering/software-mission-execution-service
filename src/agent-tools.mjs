@@ -1,5 +1,5 @@
 import { createHash } from "node:crypto";
-import { existsSync, readFileSync, readdirSync, statSync, unlinkSync, writeFileSync } from "node:fs";
+import { existsSync, readFileSync, opendirSync, statSync, unlinkSync, writeFileSync } from "node:fs";
 import { dirname, relative, resolve, sep } from "node:path";
 import { mkdirSync } from "node:fs";
 import { applyEditBlocks, prepareCreateArtifact } from "@red-cup-engineering/software-edit-language-service";
@@ -7,18 +7,67 @@ import { runTestsCommand } from "@red-cup-engineering/sandbox-command-execution-
 import { insideTerritory as inside } from "./territory-path.mjs";
 
 const SKIP = new Set([".git", "node_modules", ".lake", "dist", "coverage"]);
+// These are finite source/observation budgets, not a claim that an incomplete
+// traversal or clipped model observation constitutes source receiving.
+const MAX_WALK_FILES = 4096;
+const MAX_WALK_DIRECTORIES = 4096;
+const MAX_WALK_DIRECTORY_ENTRIES = 4096;
+const MAX_WALK_DEPTH = 64;
+const MAX_FILE_OBSERVATION_BYTES = 256 * 1024;
+const MAX_READ_RESULT_BYTES = 64 * 1024;
+const MAX_READ_LINES = 200;
+const MAX_SEARCH_FILES = 256;
+const MAX_SEARCH_TOTAL_BYTES = 2 * 1024 * 1024;
+const MAX_SEARCH_RESULTS = 100;
+const MAX_SEARCH_LINE_CHARS = 2048;
 
-
-
-function walk(root, at = root, out = []) {
-  if (!existsSync(at)) return out;
-  for (const entry of readdirSync(at, { withFileTypes: true })) {
-    if (SKIP.has(entry.name)) continue;
-    const path = resolve(at, entry.name);
-    if (entry.isDirectory()) walk(root, path, out);
-    else if (entry.isFile()) out.push(relative(root, path));
+function walk(root, at = root, { maxFiles = MAX_WALK_FILES, maxDirectories = MAX_WALK_DIRECTORIES } = {}) {
+  const files = [];
+  const pending = [{ path: at, depth: 0 }];
+  let directories = 0;
+  while (pending.length) {
+    const { path: directory, depth } = pending.pop();
+    if (++directories > maxDirectories || depth > MAX_WALK_DEPTH)
+      return { files: files.sort(), truncated: true };
+    if (!existsSync(directory)) continue;
+    // Iterate one directory through a bounded native handle. readdirSync()
+    // loads the *entire* directory before a file-count cap can act; a single
+    // enormous fanout could otherwise exhaust process memory. A complete
+    // directory is sorted deterministically. A partial directory remains
+    // explicitly incomplete and may never qualify a source census.
+    const entries = [];
+    const handle = opendirSync(directory);
+    let directoryTruncated = false;
+    try {
+      for (let entry; (entry = handle.readSync()) !== null;) {
+        if (entries.length === MAX_WALK_DIRECTORY_ENTRIES) {
+          directoryTruncated = true;
+          break;
+        }
+        entries.push(entry);
+      }
+    } finally {
+      handle.closeSync();
+    }
+    entries.sort((a, b) => a.name < b.name ? -1 : a.name > b.name ? 1 : 0);
+    let unobserved = false;
+    for (const entry of entries) {
+      if (SKIP.has(entry.name)) continue;
+      const path = resolve(directory, entry.name);
+      if (entry.isDirectory()) pending.push({ path, depth: depth + 1 });
+      else if (entry.isFile()) {
+        if (files.length === maxFiles) return { files: files.sort(), truncated: true };
+        files.push(relative(root, path));
+      } else {
+        // Symlinks, pipes, sockets and devices are not ordinary source
+        // files. Never silently promote their omission into a complete
+        // Work source census: an operator must explicitly resolve them.
+        unobserved = true;
+      }
+    }
+    if (directoryTruncated || unobserved) return { files: files.sort(), truncated: true };
   }
-  return out;
+  return { files: files.sort(), truncated: false };
 }
 
 export function digest(bytes) {
@@ -26,8 +75,7 @@ export function digest(bytes) {
 }
 
 export function territorySnapshot(root) {
-  const files = walk(root);
-  return { files, truncated: false };
+  return walk(root);
 }
 
 export function createAgentTools({ root, verifyCommand, acceptanceCommand = verifyCommand, commands = {}, writablePaths = [], readablePaths = [], commandLimits = {} } = {}) {
@@ -81,41 +129,100 @@ export function createAgentTools({ root, verifyCommand, acceptanceCommand = veri
     execute(action) {
       const args = action?.args || {};
       if (action.action === "list_files") {
-        const relativePath = relative(root, resolve(root, args.path || "."));
-        if (relativePath !== "" && !readAdmitted(relativePath)) return observe({ error: `list_files path is outside declared readable paths: ${relativePath}` });
-        const base = inside(root, args.path || ".");
-        const files = walk(root, base).filter(file => readAdmitted(file));
         const requested = Number(args.max);
-        return observe({ files: Number.isSafeInteger(requested) && requested >= 0 ? files.slice(0, requested) : files });
+        const selected = Number.isSafeInteger(requested) && requested >= 0
+          ? Math.min(requested, MAX_WALK_FILES) : MAX_WALK_FILES;
+        if (selected === 0)
+          return observe({ files: [], truncated: true, truncationAuthority: "caller" });
+        const base = inside(root, args.path || ".");
+        const relativePath = relative(root, base);
+        if (relativePath !== "" && !readAdmitted(relativePath))
+          return observe({ error: "list_files path is outside declared readable paths: " + relativePath });
+        if (existsSync(base) && !statSync(base).isDirectory())
+          return observe({ error: "list_files requires a directory" });
+        const discovered = walk(root, base);
+        const admitted = discovered.files.filter(file => readAdmitted(file));
+        const truncated = discovered.truncated || admitted.length > selected;
+        return observe({ files: admitted.slice(0, selected), truncated,
+          ...(truncated ? { truncationAuthority: discovered.truncated || selected === MAX_WALK_FILES
+            ? "resource" : "caller" } : {}) });
       }
       if (action.action === "search") {
-        const query = String(args.query || "");
-        if (!query) return observe({ error: "search requires args.query" });
-        const relativePath = relative(root, resolve(root, args.path || "."));
-        if (relativePath !== "" && !readAdmitted(relativePath)) return observe({ error: `search path is outside declared readable paths: ${relativePath}` });
-        const base = inside(root, args.path || ".");
-        const hits = [];
+        if (typeof args.query !== "string" || !args.query || args.query.length > 512)
+          return observe({ error: "search requires a nonempty query of at most 512 characters" });
         const requested = Number(args.max);
-        for (const file of walk(root, base)) {
+        const selected = Number.isSafeInteger(requested) && requested >= 0
+          ? Math.min(requested, MAX_SEARCH_RESULTS) : MAX_SEARCH_RESULTS;
+        if (selected === 0)
+          return observe({ hits: [], truncated: true, truncationAuthority: "caller" });
+        const base = inside(root, args.path || ".");
+        const relativePath = relative(root, base);
+        if (relativePath !== "" && !readAdmitted(relativePath))
+          return observe({ error: "search path is outside declared readable paths: " + relativePath });
+        if (existsSync(base) && !statSync(base).isDirectory())
+          return observe({ error: "search requires a directory" });
+        const discovered = walk(root, base, { maxFiles: MAX_SEARCH_FILES });
+        const hits = [], query = args.query.toLowerCase();
+        let inspectedBytes = 0, incomplete = discovered.truncated;
+        for (const file of discovered.files) {
           if (!readAdmitted(file)) continue;
           const path = inside(root, file);
-          let text;
-          try { text = readFileSync(path, "utf8"); } catch { continue; }
-          for (const [index, line] of text.split("\n").entries()) {
-            if (line.toLowerCase().includes(query.toLowerCase())) hits.push({ path: file, line: index + 1, text: line });
-            if (Number.isSafeInteger(requested) && requested >= 0 && hits.length >= requested) return observe({ hits, truncated: true, truncationAuthority: "caller" });
+          let source;
+          try {
+            const size = statSync(path).size;
+            if (size > MAX_FILE_OBSERVATION_BYTES) { incomplete = true; continue; }
+            if (inspectedBytes + size > MAX_SEARCH_TOTAL_BYTES) { incomplete = true; break; }
+            source = readFileSync(path, "utf8");
+            inspectedBytes += size;
+          } catch { incomplete = true; continue; }
+          for (const [index, line] of source.split("\n").entries()) {
+            if (!line.toLowerCase().includes(query)) continue;
+            const lineTruncated = line.length > MAX_SEARCH_LINE_CHARS;
+            if (lineTruncated) incomplete = true;
+            hits.push({ path: file, line: index + 1,
+              text: lineTruncated ? line.slice(0, MAX_SEARCH_LINE_CHARS) : line,
+              ...(lineTruncated ? { lineTruncated: true } : {}) });
+            if (hits.length === selected)
+              return observe({ hits, truncated: true,
+                truncationAuthority: incomplete || selected === MAX_SEARCH_RESULTS ? "resource" : "caller" });
           }
         }
-        return observe({ hits, truncated: false });
+        return observe({ hits, truncated: incomplete,
+          ...(incomplete ? { truncationAuthority: "resource" } : {}) });
       }
       if (action.action === "read") {
-        const path = inside(root, args.path);
-        const relativePath = relative(root, path);
-        if (!readAdmitted(relativePath)) return observe({ ok: false, error: `read path is outside declared readable paths: ${relativePath}` });
-        const start = Math.max(1, Number(args.startLine) || 1), end = Number.isSafeInteger(Number(args.endLine)) ? Number(args.endLine) : undefined;
+        if (typeof args.path !== "string" || !args.path.trim())
+          return observe({ ok: false, terminal: true, error: "read requires a nonempty source path" });
+        const path = inside(root, args.path), relativePath = relative(root, path);
+        if (!readAdmitted(relativePath))
+          return observe({ ok: false, terminal: true, error: "read path is outside declared readable paths: " + relativePath });
+        let size;
+        try {
+          const metadata = statSync(path);
+          if (!metadata.isFile()) return observe({ ok: false, terminal: true, error: "read requires an ordinary file" });
+          size = metadata.size;
+        } catch (error) {
+          if (error?.code === "ENOENT") return observe({ ok: false, terminal: true, error: "read source does not exist" });
+          throw error;
+        }
+        if (size > MAX_FILE_OBSERVATION_BYTES)
+          return observe({ ok: false, terminal: true, error: "read source exceeds the bounded 256 KiB file observation" });
+        const start = args.startLine === undefined ? 1 : Number(args.startLine);
+        if (!Number.isSafeInteger(start) || start < 1)
+          return observe({ ok: false, terminal: true, error: "read startLine must be a positive safe integer" });
+        const end = args.endLine === undefined ? undefined : Number(args.endLine);
+        if (end !== undefined && (!Number.isSafeInteger(end) || end < start))
+          return observe({ ok: false, terminal: true, error: "read endLine must be a safe integer not before startLine" });
         const lines = readFileSync(path, "utf8").split("\n");
-        const last = end === undefined ? lines.length : Math.min(Math.max(start, end), lines.length);
-        return observe({ path: relativePath, startLine: start, endLine: last, text: lines.slice(start - 1, last).join("\n") });
+        const requestedLast = Math.min(end === undefined ? lines.length : end, lines.length);
+        const last = Math.min(requestedLast, start + MAX_READ_LINES - 1);
+        const text = lines.slice(start - 1, last).join("\n");
+        if (Buffer.byteLength(text, "utf8") > MAX_READ_RESULT_BYTES)
+          return observe({ ok: false, terminal: true,
+            error: "read result exceeds 64 KiB; select a narrower line range" });
+        const truncated = last < requestedLast;
+        return observe({ path: relativePath, startLine: start, endLine: last, text, truncated,
+          ...(truncated ? { truncationAuthority: "resource" } : {}) });
       }
       if (action.action === "edit") {
         const path = inside(root, args.path), relativePath = relative(root, path);
@@ -160,10 +267,8 @@ export function createAgentTools({ root, verifyCommand, acceptanceCommand = veri
           return observe({ ok: false, terminal: true, error: "create requires a nonempty target path" });
         try { inside(root, args.path); }
         catch (error) {
-          // Lexical traversal is a malformed customer action, not a tool-host
-          // exception: preserve the original mission JSON refusal and avoid
-          // crashing its action loop. Keep symlink/security inspection errors
-          // explicit and thrown under the preexisting territory contract.
+          // Preserve the JSON action refusal for lexical traversal without
+          // downgrading the incumbent symlink inspection rejection.
           if (error?.message === "path escapes the admitted territory")
             return observe({ ok: false, terminal: true, error: error.message });
           throw error;
