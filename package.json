@@ -6,7 +6,9 @@
   "description": "Market-coordinated software mission cell over immutable source, durable trajectory memory, isolated tools, and customer induction.",
   "exports": {
     ".": "./src/client.mjs",
-    "./client": "./src/client.mjs"
+    "./client": "./src/client.mjs",
+    "./actor": "./src/actor.mjs",
+    "./result-custody": "./src/result-custody.mjs"
   },
   "files": [
     "src/agent-tools.mjs",
@@ -16,11 +18,13 @@
     "src/market-client.mjs",
     "src/mission-pipeline.mjs",
     "src/mission-runtime.mjs",
-    "src/semantic-content.mjs"
+    "src/semantic-content.mjs",
+    "src/actor.mjs",
+    "src/result-custody.mjs"
   ],
   "scripts": {
-    "check": "node --check src/client.mjs && node --check src/agent-tools.mjs && node --check src/consideration.mjs && node --check src/market-client.mjs && node --check src/mission-pipeline.mjs && node --check src/mission-runtime.mjs && node --check src/semantic-content.mjs && node --check src/territory-path.mjs && node --check test/territory-path.test.mjs && node --check test/agent-tools.test.mjs",
-    "test": "node --test test/mission-pipeline.test.mjs test/agent-tools.test.mjs test/territory-path.test.mjs",
+    "check": "node --check src/client.mjs && node --check src/agent-tools.mjs && node --check src/consideration.mjs && node --check src/market-client.mjs && node --check src/mission-pipeline.mjs && node --check src/mission-runtime.mjs && node --check src/semantic-content.mjs && node --check src/territory-path.mjs && node --check test/territory-path.test.mjs && node --check test/agent-tools.test.mjs && node --check src/actor.mjs && node --check src/result-custody.mjs && node --check test/result-custody.test.mjs",
+    "test": "node --test test/mission-pipeline.test.mjs test/agent-tools.test.mjs test/territory-path.test.mjs test/result-custody.test.mjs",
     "verify": "npm run check && npm test"
   },
   "dependencies": {

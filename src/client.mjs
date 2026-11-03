@@ -1,7 +1,8 @@
 import { runMissionPipeline } from "./mission-pipeline.mjs";
 import { identifyOperation } from "./semantic-content.mjs";
 
-export const ACTOR = "urn:ame:software-mission-execution-service";
+import { ACTOR } from './actor.mjs';
+export { ACTOR } from './actor.mjs';
 
 function record(body) {
   return Object.freeze({ id: identifyOperation(body).id, ...body });
