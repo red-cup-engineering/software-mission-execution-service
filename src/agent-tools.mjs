@@ -78,17 +78,29 @@ export function territorySnapshot(root) {
   return walk(root);
 }
 
-export function createAgentTools({ root, verifyCommand, acceptanceCommand = verifyCommand, commands = {}, writablePaths = [], readablePaths = [] } = {}) {
+export function createAgentTools({ root, verifyCommand, acceptanceCommand = verifyCommand, commands = {}, writablePaths = [], readablePaths = [], commandLimits = {} } = {}) {
   const changed = new Map();
   const admittedWrites = writablePaths.map((path) => relative(root, inside(root, path)));
   const writeAdmitted = (path) => !admittedWrites.length || admittedWrites.some((allowed) => path === allowed || path.startsWith(`${allowed}${sep}`));
   const admittedReads = readablePaths.map((path) => relative(root, inside(root, path)));
   const readAdmitted = (path) => !admittedReads.length || admittedReads.some((allowed) => path === allowed || path.startsWith(`${allowed}${sep}`));
   const observe = (value) => JSON.stringify(value);
-  const checkObservation = (result) => ({ passed: result.passed, output: result.passed ? "exit=0" : result.output });
+  // Observations retain the worker supplier's source-measured wall time and
+  // *why* a result was refused. Old supplier readouts lack these fields and
+  // remain explicitly unknown, never inferred from a pass/fail boolean.
+  const checkObservation = (result) => ({
+    passed: result.passed, output: result.passed ? "exit=0" : result.output,
+    failureKind: typeof result.failureKind === "string" ? result.failureKind
+      : result.passed ? null : "unclassified",
+    observedWallMs: Number.isSafeInteger(result.observedWallMs) ? result.observedWallMs : null,
+    processGroupCleanup: typeof result.processGroupCleanup === "string"
+      ? result.processGroupCleanup : "unknown",
+    limits: result.limits ?? null,
+  });
   const checks = () => {
-    const verification = runTestsCommand(root, verifyCommand);
-    const acceptance = acceptanceCommand === verifyCommand ? verification : runTestsCommand(root, acceptanceCommand);
+    const verification = runTestsCommand(root, verifyCommand, commandLimits);
+    const acceptance = acceptanceCommand === verifyCommand ? verification
+      : runTestsCommand(root, acceptanceCommand, commandLimits);
     return { verification, acceptance };
   };
   let settledChecks = verifyCommand
@@ -285,8 +297,11 @@ export function createAgentTools({ root, verifyCommand, acceptanceCommand = veri
       if (action.action === "command") {
         const named = commands[String(args.name || "")];
         if (!named?.command) return observe({ terminal: true, error: `command is not admitted: ${args.name || "(missing)"}`, available: Object.keys(commands) });
-        const result = runTestsCommand(root, named.command);
-        return observe({ command: args.name, passed: result.passed, output: result.output });
+        const result = runTestsCommand(root, named.command, commandLimits);
+        return observe({ command: args.name, ...checkObservation(result),
+          // A named command is an explicitly admitted Work act, not a
+          // guaranteed customer-accepted deliverable or a financial receipt.
+          output: result.output });
       }
       if (action.action === "test" || action.action === "finish") {
         const { verification, acceptance } = checks();

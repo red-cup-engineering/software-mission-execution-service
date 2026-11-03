@@ -58,3 +58,21 @@ process node. Ordinary-file source trees remain admitted. The native
 agent-tool tests independently inspect a symlink pointing outside the
 territory, require incomplete listing and search, and confirm the original
 symlink read guard still rejects its traversal.
+
+## Original command execution limits and refusal evidence
+
+The original Software Mission Work and its source-derived identity accept an
+optional `commandLimits:{timeoutMs,maxOutputBytes}` admitted by the original
+`sandbox-command-execution-service` supplier. This applies to baseline
+verification, acceptance commands, replay, process-node work and named
+commands. `failureKind`, measured `observedWallMs`, attempted
+`processGroupCleanup` and actual limits remain in test/finish/command receipts.
+Absent legacy fields remain unknown.
+
+This reconciles [original Software Mission PR #1](https://github.com/red-cup-engineering/software-mission-execution-service/pull/1)
+with main's independently received finite source census and symlink refusal.
+The existing native `software-mission-bounded-native.yml` installs the exact
+original command and edit providers and exercises these tests on Node22/24.
+The full mission registry installation is still blocked by unpublished RMN
+typing 0.0.2 and the stale mission dependency lock; source integration alone
+does not mean that customer Work or SignChain is settled.
